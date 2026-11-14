@@ -272,13 +272,21 @@ def test_wizard_offers_detection_rules_and_the_fridge_template_is_not_saved_unti
     from adaptive_light.model import plan_living_room
     f = Wizard(draft.MemoryDraftStore())
     sub(f, "preset_plan")
-    assert "zone_detect" in sub(f, "groups_menu")["menu_options"]
+    opts = sub(f, "groups_menu")["menu_options"]
+    assert list(opts) == ["group_add", "zone_detect", "more_zones"]
+    assert opts["zone_detect"] == "On detection" and opts["group_add"] == "Add a lamp group"
+    HASS.config.language = "ru"
+    try:
+        assert sub(f, "groups_menu")["menu_options"]["zone_detect"] == "По детекции"
+    finally:
+        HASS.config.language = "en"
     # preset jumps to save; open detection from a fresh options flow, which is where a zone is edited
     g = Options(plan_living_room())
     g._load()
     g._zone = "living_room"
     menu = sub(g, "zone_menu")
-    assert "zone_detect" in menu["menu_options"]
+    assert menu["menu_options"]["zone_detect"] == "On detection"
+    assert menu["menu_options"]["group_add"] == "Add a group"
     r = sub(g, "detect_tpl_fridge")
     assert r["step_id"] == "detect_add" and not g.cfg["zones"][0].get("detect_rules")
     assert fields(r)["sensor"] == "binary_sensor.living_room_presence_sensor_refrigerator_zone"
@@ -291,7 +299,8 @@ def test_wizard_offers_detection_rules_and_the_fridge_template_is_not_saved_unti
     rules = g.cfg["zones"][0]["detect_rules"]
     assert len(rules) == 1 and rules[0]["sensor"].endswith("refrigerator_zone") and rules[0]["lamps"] == ["bottom"]
     r = sub(g, "zone_detect")
-    assert "detect_delete" in r["menu_options"]
+    assert r["menu_options"]["detect_delete"] == "Delete a rule"
+    assert r["menu_options"]["zone_menu"] == "Back"
     sub(g, "detect_delete", {"rule": rules[0]["id"]})
     assert g.cfg["zones"][0]["detect_rules"] == []
 

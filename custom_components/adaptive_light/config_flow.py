@@ -22,6 +22,37 @@ _LOGGER = logging.getLogger(__name__)
 EXTRA_ROLES = ("sofa", "table", "fridge", "entrance", "carpet", "window_advice", "window_left", "window_right",
                "vent_mode", "color_store")
 BOOL_OPTS = ["yes", "no"]
+# (english, russian). Keys are the step id the menu item opens.
+_MENU_TEXT = {
+    "groups_menu": {
+        "group_add": ("Add a lamp group", "Добавить группу ламп"),
+        "zone_detect": ("On detection", "По детекции"),
+        "more_zones": ("Continue", "Дальше"),
+    },
+    "zone_menu": {
+        "zone_sensors": ("Sensors", "Датчики"),
+        "zone_extra_sensors": ("Extra sensors", "Доп. датчики"),
+        "zone_lamps": ("Add lamps", "Добавить лампы"),
+        "group_add": ("Add a group", "Добавить группу"),
+        "zone_params": ("Zone parameters", "Параметры зоны"),
+        "zone_bindings": ("Behaviour scenarios", "Сценарии поведения"),
+        "zone_detect": ("On detection", "По детекции"),
+        "zone_remove": ("Remove zone", "Удалить зону"),
+        "init": ("Back", "Назад"),
+    },
+    "zone_detect": {
+        "detect_add": ("Add a rule", "Добавить правило"),
+        "detect_tpl_room": (
+            "Template: room presence → main group, adaptive, off 10 min after leave",
+            "Шаблон: присутствие комнаты → основная группа, адаптивно, выкл через 10 мин"),
+        "detect_tpl_fridge": (
+            "Template: fridge sensor → one lamp, fixed 30% at 4500 K, off after 10 s",
+            "Шаблон: датчик холодильника → одна лампа, 30% и 4500 K, выкл через 10 с"),
+        "detect_delete": ("Delete a rule", "Удалить правило"),
+        "zone_menu": ("Back", "Назад"),
+        "groups_menu": ("Back", "Назад"),
+    },
+}
 
 
 def _ent(domains, multiple=False):
@@ -87,6 +118,16 @@ class EditorMixin:
 
     def _t(self, en: str, ru: str) -> str:
         return ru if self._ru() else en
+
+    def _menu(self, step: str, options: list[str]) -> dict[str, str]:
+        """Labels travel with the step.
+
+        A list of step ids is labelled from the translation files. Home Assistant keeps those
+        files in the open browser tab and does not reload them when the integration is updated,
+        so a new item renders as an empty row. A dict is shown as-is.
+        """
+        spec = _MENU_TEXT[step]
+        return {key: self._t(*spec[key]) for key in options}
 
     def _first_zone(self) -> str:
         return self._zone or (self.cfg["zones"][0]["key"] if self.cfg["zones"] else "")
@@ -319,7 +360,7 @@ class EditorMixin:
             opts.append("detect_delete")
         opts.append(self._detect_back)
         return self.async_show_menu(
-            step_id="zone_detect", menu_options=opts,
+            step_id="zone_detect", menu_options=self._menu("zone_detect", opts),
             description_placeholders={"zone": z["name"], "rules": self._rules_note(rules)})
 
     async def async_step_detect_add(self, user_input=None):
@@ -471,7 +512,9 @@ class AdaptiveLightConfigFlow(EditorMixin, config_entries.ConfigFlow, domain=DOM
         return await self._zone_area_step("zone", user_input)
 
     async def async_step_groups_menu(self, user_input=None):
-        return self.async_show_menu(step_id="groups_menu", menu_options=["group_add", "zone_detect", "more_zones"])
+        return self.async_show_menu(
+            step_id="groups_menu",
+            menu_options=self._menu("groups_menu", ["group_add", "zone_detect", "more_zones"]))
 
     async def async_step_more_zones(self, user_input=None):
         return self.async_show_menu(step_id="more_zones", menu_options=["zone", "save"])
@@ -537,9 +580,11 @@ class AdaptiveLightOptionsFlow(EditorMixin, config_entries.OptionsFlow):
         return await self._zone_area_step("new_zone", user_input)
 
     async def async_step_zone_menu(self, user_input=None):
-        return self.async_show_menu(step_id="zone_menu", menu_options=[
-            "zone_sensors", "zone_extra_sensors", "zone_lamps", "group_add", "zone_params", "zone_bindings",
-            "zone_detect", "zone_remove", "init"],
+        return self.async_show_menu(
+            step_id="zone_menu",
+            menu_options=self._menu("zone_menu", [
+                "zone_sensors", "zone_extra_sensors", "zone_lamps", "group_add", "zone_params", "zone_bindings",
+                "zone_detect", "zone_remove", "init"]),
             description_placeholders={"zone": self._zone_name()})
 
     async def async_step_zone_params(self, user_input=None):
