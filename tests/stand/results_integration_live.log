@@ -1,0 +1,43 @@
+== wizard
+[PASS] W1 wizard (global sensors, zone, sensors, lamps, group, second zone) creates an entry 
+[PASS] W2 entities of both zones and every lamp exist []
+[PASS] W3 zone step refuses a missing illuminance sensor 
+[PASS] W4 group step refuses an empty group {'base': 'group_needs_lamps'}
+== restart
+[PASS] P0 openness fell after the confirm ticks (blinds closed scenario) 13.4
+[PASS] P1 manual lamp change starts a pause 2026-11-14T10:12:36+00:00
+[PASS] P2 pause survived the restart 2026-11-14T10:12:36+00:00 -> 2026-11-14T10:12:36+00:00
+[PASS] P3 apply switch survived 
+[PASS] P4 per-lamp auto switch off survived, others on off on
+[PASS] P5 k edited through the number entity survived (lives in the config entry) 0.777
+[PASS] P6 openness survived the restart 13.4 -> 13.4
+[PASS] P8 master 'enabled' persisted off 
+== options
+[PASS] O1 options flow edits a lamp parameter and saves create_entry
+[PASS] O2 new lamp limit applied after the reload (target capped at 20) 39 -> 16
+[PASS] O3 state survived the options reload (auto switch, edited k) 
+[PASS] O4 options flow adds a zone and a global parameter {'type': 'create_entry', 'flow_id': 'e57ee5b1e062ee2efcf86260ce96bcad', 'handler': '01M7CQ0J8MG47VCRQ1NKQQ0FKQ', 'description': None, 'description_placeholders': None, 'title': ''}
+[PASS] O5 entities of the new zone exist 
+[PASS] O6 lamp removed from the config; the rest keeps working unavailable
+[PASS] O7 unsaved options flow changes nothing 
+== scenarios
+[PASS] S1 movie start dims the top lamps [8, 8, 8]
+[PASS] S2 leaving movie restores the snapshot [70, 70, 70]
+[PASS] S3 lamp with auto switch off is not dimmed {'top_left': 8, 'bottom': 70}
+[PASS] S4 scenarios switch off: movie does nothing [55, 55, 55]
+[PASS] S5 fridge zone lights the bottom lamp at 30 % 30
+[PASS] S6 fridge zone off restores (lamp off again) None
+[PASS] S7 scene change re-levels the lit desk lamp 20
+[PASS] S8 no adaptive_light errors in the HA log 
+== calibration
+[PASS] K1 calibration refuses to start while somebody is present 
+[PASS] K2 calibration running (status sensor) running
+[PASS] K3 calibration finished done
+[PASS] K4 candidates match the simulated lamps {'bg0': 0.5, 'top_left': 0.12, 'top_right': 0.09, 'bottom': 0.2, 'desk': 0.55, 'stick': 0.8}
+[PASS] K5 lamps restored to the snapshot (desk 40 %, others off) {'top_left': None, 'top_right': None, 'bottom': None, 'desk': 40, 'stick': None}
+[PASS] K6 k not written before apply 0.5
+[PASS] K7 apply wrote k into the lamp parameters {'top_left': 0.12, 'top_right': 0.09, 'bottom': 0.2, 'desk': 0.55, 'stick': 0.8}
+[PASS] K8 open_k calibrated in daylight {'changed_states': [], 'service_response': {'open_k': 3.4}}
+[PASS] K9 open_k refuses while a lamp is on 
+
+36/36 PASS

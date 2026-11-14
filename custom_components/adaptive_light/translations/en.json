@@ -1,0 +1,600 @@
+{
+  "title": "Adaptive Light",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up",
+        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room).",
+        "menu_options": {
+          "global_sensors": "Step-by-step wizard",
+          "preset_plan": "Preset: living room of the YAML plan"
+        }
+      },
+      "global_sensors": {
+        "title": "Outdoor light",
+        "description": "Optional sensors that tell how bright it is outside. Without them the integration cannot compute the daylight factor.",
+        "data": {
+          "radiation": "Outdoor radiation sensor",
+          "elevation": "Sun elevation sensor (daylight source)",
+          "illuminance": "Illuminance sensor",
+          "presence": "Presence sensor",
+          "media": "TV / monitors (calibration condition)",
+          "sofa": "Sofa sensor",
+          "table": "Table sensor",
+          "fridge": "Fridge zone sensor",
+          "entrance": "Entrance sensor",
+          "carpet": "Carpet sensor",
+          "window_advice": "Window advice sensor",
+          "window_left": "Left window sensor",
+          "window_right": "Right window sensor",
+          "vent_mode": "Ventilation mode switch",
+          "color_store": "Colour store (input_text)"
+        }
+      },
+      "zone": {
+        "title": "New zone",
+        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "data": {
+          "name": "Name"
+        }
+      },
+      "new_zone": {
+        "title": "New zone",
+        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "data": {
+          "name": "Name"
+        }
+      },
+      "zone_sensors": {
+        "title": "Sensors of {zone}",
+        "description": "Illuminance is required. Presence and media sensors are used by calibration and executors.",
+        "data": {
+          "radiation": "Outdoor radiation sensor",
+          "elevation": "Sun elevation sensor (daylight source)",
+          "illuminance": "Illuminance sensor",
+          "presence": "Presence sensor",
+          "media": "TV / monitors (calibration condition)",
+          "sofa": "Sofa sensor",
+          "table": "Table sensor",
+          "fridge": "Fridge zone sensor",
+          "entrance": "Entrance sensor",
+          "carpet": "Carpet sensor",
+          "window_advice": "Window advice sensor",
+          "window_left": "Left window sensor",
+          "window_right": "Right window sensor",
+          "vent_mode": "Ventilation mode switch",
+          "color_store": "Colour store (input_text)"
+        }
+      },
+      "zone_extra_sensors": {
+        "title": "Extra sensors of {zone}",
+        "description": "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
+        "data": {
+          "radiation": "Outdoor radiation sensor",
+          "elevation": "Sun elevation sensor (daylight source)",
+          "illuminance": "Illuminance sensor",
+          "presence": "Presence sensor",
+          "media": "TV / monitors (calibration condition)",
+          "sofa": "Sofa sensor",
+          "table": "Table sensor",
+          "fridge": "Fridge zone sensor",
+          "entrance": "Entrance sensor",
+          "carpet": "Carpet sensor",
+          "window_advice": "Window advice sensor",
+          "window_left": "Left window sensor",
+          "window_right": "Right window sensor",
+          "vent_mode": "Ventilation mode switch",
+          "color_store": "Colour store (input_text)"
+        }
+      },
+      "zone_lamps": {
+        "title": "Lamps of {zone}",
+        "description": "Pick the light entities of this zone. Each becomes a lamp with its own auto switch.",
+        "data": {
+          "lamps": "Lamps"
+        }
+      },
+      "group_add": {
+        "title": "New lamp group in {zone}",
+        "description": "A group shares settings and can be used by scenarios. A lamp may be in several groups.",
+        "data": {
+          "name": "Name",
+          "lamps": "Lamps",
+          "share_pause": "Manual change pauses the whole group"
+        }
+      },
+      "group_edit": {
+        "title": "Group {group}",
+        "description": "",
+        "data": {
+          "name": "Name",
+          "lamps": "Lamps",
+          "share_pause": "Manual change pauses the whole group"
+        }
+      },
+      "params": {
+        "title": "Parameters ({level}: {target})",
+        "description": "Empty field = inherit from the level above (global, zone, group, lamp).",
+        "data": {
+          "target_lux_day": "Target lux, day",
+          "target_lux_evening": "Target lux, evening",
+          "w_outdoor": "Weight of outdoor light",
+          "w_indoor": "Weight of indoor light",
+          "evening_start_hour": "Evening starts at (hour)",
+          "scene_work": "Scene multiplier: work",
+          "scene_bright": "Scene multiplier: bright",
+          "scene_soft": "Scene multiplier: soft",
+          "need_blind": "Need when blinded (no trust in lux)",
+          "override_minutes": "Manual override pause, minutes",
+          "mode_entity": "Mode entity (input_select with Day/Evening/Night/Movie)",
+          "scene_entity": "Scene entity (Work/Bright/Soft)",
+          "min": "Minimum brightness, %",
+          "max": "Maximum brightness, %",
+          "gain": "Gain",
+          "evening_mult": "Evening multiplier",
+          "w_out": "Lamp weight outdoor (-1 = inherit)",
+          "w_in": "Lamp weight indoor (-1 = inherit)",
+          "scene_scaled": "Scale by scene",
+          "work_hours_only": "Switch on only in work hours",
+          "legacy_ratio": "Legacy ratio (desk scenes)",
+          "ctrl_modes": "Controller works in modes (comma separated)",
+          "fridge_block": "Do not adjust while fridge zone is active",
+          "calib_levels": "Calibration levels (3 numbers)",
+          "k": "Lux per 1% (set by calibration)",
+          "dark_lux_offset": "Dark lux offset",
+          "blind_lux_floor": "Blind lux floor",
+          "open_k": "Open-window k",
+          "open_min_daylight": "Min daylight for openness",
+          "open_hyst": "Openness hysteresis",
+          "open_confirm": "Openness confirm ticks",
+          "radiation_full_scale": "Radiation for 100% daylight, W/m2",
+          "step_pct": "Controller step, %",
+          "threshold_pct": "Controller threshold, %",
+          "transition_s": "Transition, s"
+        }
+      },
+      "zone_bindings": {
+        "title": "Behaviour of {zone}",
+        "description": "Which groups and lamps the scenarios use. Empty = scenario off.",
+        "data": {
+          "top_group": "Top lights group",
+          "desk_group": "Desk lights group",
+          "wake_group": "Night wake group",
+          "fridge_lamp": "Fridge lamp",
+          "vent_left": "Ventilation blink, left lamp",
+          "vent_right": "Ventilation blink, right lamp",
+          "green_lamp": "Green fill lamp"
+        }
+      },
+      "pick_zone": {
+        "title": "Pick a zone",
+        "description": "",
+        "data": {
+          "zone": "Zone"
+        }
+      },
+      "pick_lamp": {
+        "title": "Pick a lamp",
+        "description": "",
+        "data": {
+          "lamp": "Lamp"
+        }
+      },
+      "pick_group": {
+        "title": "Pick a group",
+        "description": "",
+        "data": {
+          "group": "Group"
+        }
+      },
+      "zone_remove": {
+        "title": "Remove {zone}?",
+        "description": "Its lamps, groups and sensors are removed from the configuration."
+      },
+      "lamp_remove": {
+        "title": "Remove {lamp}?",
+        "description": ""
+      },
+      "group_remove": {
+        "title": "Remove {group}?",
+        "description": ""
+      },
+      "save": {
+        "title": "Review",
+        "description": "{summary}\n\n{detail}"
+      },
+      "groups_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "group_add": "Add a lamp group",
+          "more_zones": "Continue"
+        }
+      },
+      "more_zones": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "zone": "Add another zone",
+          "save": "Finish"
+        }
+      },
+      "init": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "global_sensors": "Outdoor sensors",
+          "global_params": "Global parameters",
+          "pick_zone": "Edit a zone",
+          "new_zone": "Add a zone",
+          "pick_lamp": "Edit a lamp",
+          "pick_group": "Edit a group",
+          "save": "Save and apply"
+        }
+      },
+      "zone_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "zone_sensors": "Sensors",
+          "zone_extra_sensors": "Extra sensors",
+          "zone_lamps": "Add lamps",
+          "group_add": "Add a group",
+          "zone_params": "Zone parameters",
+          "zone_bindings": "Behaviour scenarios",
+          "zone_remove": "Remove zone",
+          "init": "Back"
+        }
+      },
+      "lamp_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "lamp_params": "Lamp parameters",
+          "lamp_remove": "Remove lamp",
+          "init": "Back"
+        }
+      },
+      "group_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "group_edit": "Name and lamps",
+          "group_params": "Group parameters",
+          "group_remove": "Remove group",
+          "init": "Back"
+        }
+      }
+    },
+    "error": {
+      "bad_key": "Invalid key",
+      "duplicate_key": "Duplicate key",
+      "duplicate_lamp_entity": "The same light is used twice",
+      "unknown_zone": "Unknown zone",
+      "unknown_lamp": "Unknown lamp",
+      "lamp_zone_mismatch": "A group mixes lamps of different zones",
+      "bad_role": "Unknown sensor role",
+      "role_zone_mismatch": "Sensor role does not fit its zone",
+      "bad_sensor_domain": "The entity type does not fit the role",
+      "zone_needs_illuminance": "Every zone needs an illuminance sensor",
+      "bad_binding": "Invalid behaviour binding",
+      "no_zones": "Add at least one zone",
+      "group_needs_lamps": "Pick at least one lamp"
+    },
+    "abort": {
+      "single_instance_allowed": "Already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "title": "Set up",
+        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room).",
+        "menu_options": {
+          "global_sensors": "Step-by-step wizard",
+          "preset_plan": "Preset: living room of the YAML plan"
+        }
+      },
+      "global_sensors": {
+        "title": "Outdoor light",
+        "description": "Optional sensors that tell how bright it is outside. Without them the integration cannot compute the daylight factor.",
+        "data": {
+          "radiation": "Outdoor radiation sensor",
+          "elevation": "Sun elevation sensor (daylight source)",
+          "illuminance": "Illuminance sensor",
+          "presence": "Presence sensor",
+          "media": "TV / monitors (calibration condition)",
+          "sofa": "Sofa sensor",
+          "table": "Table sensor",
+          "fridge": "Fridge zone sensor",
+          "entrance": "Entrance sensor",
+          "carpet": "Carpet sensor",
+          "window_advice": "Window advice sensor",
+          "window_left": "Left window sensor",
+          "window_right": "Right window sensor",
+          "vent_mode": "Ventilation mode switch",
+          "color_store": "Colour store (input_text)"
+        }
+      },
+      "zone": {
+        "title": "New zone",
+        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "data": {
+          "name": "Name"
+        }
+      },
+      "new_zone": {
+        "title": "New zone",
+        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "data": {
+          "name": "Name"
+        }
+      },
+      "zone_sensors": {
+        "title": "Sensors of {zone}",
+        "description": "Illuminance is required. Presence and media sensors are used by calibration and executors.",
+        "data": {
+          "radiation": "Outdoor radiation sensor",
+          "elevation": "Sun elevation sensor (daylight source)",
+          "illuminance": "Illuminance sensor",
+          "presence": "Presence sensor",
+          "media": "TV / monitors (calibration condition)",
+          "sofa": "Sofa sensor",
+          "table": "Table sensor",
+          "fridge": "Fridge zone sensor",
+          "entrance": "Entrance sensor",
+          "carpet": "Carpet sensor",
+          "window_advice": "Window advice sensor",
+          "window_left": "Left window sensor",
+          "window_right": "Right window sensor",
+          "vent_mode": "Ventilation mode switch",
+          "color_store": "Colour store (input_text)"
+        }
+      },
+      "zone_extra_sensors": {
+        "title": "Extra sensors of {zone}",
+        "description": "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
+        "data": {
+          "radiation": "Outdoor radiation sensor",
+          "elevation": "Sun elevation sensor (daylight source)",
+          "illuminance": "Illuminance sensor",
+          "presence": "Presence sensor",
+          "media": "TV / monitors (calibration condition)",
+          "sofa": "Sofa sensor",
+          "table": "Table sensor",
+          "fridge": "Fridge zone sensor",
+          "entrance": "Entrance sensor",
+          "carpet": "Carpet sensor",
+          "window_advice": "Window advice sensor",
+          "window_left": "Left window sensor",
+          "window_right": "Right window sensor",
+          "vent_mode": "Ventilation mode switch",
+          "color_store": "Colour store (input_text)"
+        }
+      },
+      "zone_lamps": {
+        "title": "Lamps of {zone}",
+        "description": "Pick the light entities of this zone. Each becomes a lamp with its own auto switch.",
+        "data": {
+          "lamps": "Lamps"
+        }
+      },
+      "group_add": {
+        "title": "New lamp group in {zone}",
+        "description": "A group shares settings and can be used by scenarios. A lamp may be in several groups.",
+        "data": {
+          "name": "Name",
+          "lamps": "Lamps",
+          "share_pause": "Manual change pauses the whole group"
+        }
+      },
+      "group_edit": {
+        "title": "Group {group}",
+        "description": "",
+        "data": {
+          "name": "Name",
+          "lamps": "Lamps",
+          "share_pause": "Manual change pauses the whole group"
+        }
+      },
+      "params": {
+        "title": "Parameters ({level}: {target})",
+        "description": "Empty field = inherit from the level above (global, zone, group, lamp).",
+        "data": {
+          "target_lux_day": "Target lux, day",
+          "target_lux_evening": "Target lux, evening",
+          "w_outdoor": "Weight of outdoor light",
+          "w_indoor": "Weight of indoor light",
+          "evening_start_hour": "Evening starts at (hour)",
+          "scene_work": "Scene multiplier: work",
+          "scene_bright": "Scene multiplier: bright",
+          "scene_soft": "Scene multiplier: soft",
+          "need_blind": "Need when blinded (no trust in lux)",
+          "override_minutes": "Manual override pause, minutes",
+          "mode_entity": "Mode entity (input_select with Day/Evening/Night/Movie)",
+          "scene_entity": "Scene entity (Work/Bright/Soft)",
+          "min": "Minimum brightness, %",
+          "max": "Maximum brightness, %",
+          "gain": "Gain",
+          "evening_mult": "Evening multiplier",
+          "w_out": "Lamp weight outdoor (-1 = inherit)",
+          "w_in": "Lamp weight indoor (-1 = inherit)",
+          "scene_scaled": "Scale by scene",
+          "work_hours_only": "Switch on only in work hours",
+          "legacy_ratio": "Legacy ratio (desk scenes)",
+          "ctrl_modes": "Controller works in modes (comma separated)",
+          "fridge_block": "Do not adjust while fridge zone is active",
+          "calib_levels": "Calibration levels (3 numbers)",
+          "k": "Lux per 1% (set by calibration)",
+          "dark_lux_offset": "Dark lux offset",
+          "blind_lux_floor": "Blind lux floor",
+          "open_k": "Open-window k",
+          "open_min_daylight": "Min daylight for openness",
+          "open_hyst": "Openness hysteresis",
+          "open_confirm": "Openness confirm ticks",
+          "radiation_full_scale": "Radiation for 100% daylight, W/m2",
+          "step_pct": "Controller step, %",
+          "threshold_pct": "Controller threshold, %",
+          "transition_s": "Transition, s"
+        }
+      },
+      "zone_bindings": {
+        "title": "Behaviour of {zone}",
+        "description": "Which groups and lamps the scenarios use. Empty = scenario off.",
+        "data": {
+          "top_group": "Top lights group",
+          "desk_group": "Desk lights group",
+          "wake_group": "Night wake group",
+          "fridge_lamp": "Fridge lamp",
+          "vent_left": "Ventilation blink, left lamp",
+          "vent_right": "Ventilation blink, right lamp",
+          "green_lamp": "Green fill lamp"
+        }
+      },
+      "pick_zone": {
+        "title": "Pick a zone",
+        "description": "",
+        "data": {
+          "zone": "Zone"
+        }
+      },
+      "pick_lamp": {
+        "title": "Pick a lamp",
+        "description": "",
+        "data": {
+          "lamp": "Lamp"
+        }
+      },
+      "pick_group": {
+        "title": "Pick a group",
+        "description": "",
+        "data": {
+          "group": "Group"
+        }
+      },
+      "zone_remove": {
+        "title": "Remove {zone}?",
+        "description": "Its lamps, groups and sensors are removed from the configuration."
+      },
+      "lamp_remove": {
+        "title": "Remove {lamp}?",
+        "description": ""
+      },
+      "group_remove": {
+        "title": "Remove {group}?",
+        "description": ""
+      },
+      "save": {
+        "title": "Review",
+        "description": "{summary}\n\n{detail}"
+      },
+      "groups_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "group_add": "Add a lamp group",
+          "more_zones": "Continue"
+        }
+      },
+      "more_zones": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "zone": "Add another zone",
+          "save": "Finish"
+        }
+      },
+      "init": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "global_sensors": "Outdoor sensors",
+          "global_params": "Global parameters",
+          "pick_zone": "Edit a zone",
+          "new_zone": "Add a zone",
+          "pick_lamp": "Edit a lamp",
+          "pick_group": "Edit a group",
+          "save": "Save and apply"
+        }
+      },
+      "zone_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "zone_sensors": "Sensors",
+          "zone_extra_sensors": "Extra sensors",
+          "zone_lamps": "Add lamps",
+          "group_add": "Add a group",
+          "zone_params": "Zone parameters",
+          "zone_bindings": "Behaviour scenarios",
+          "zone_remove": "Remove zone",
+          "init": "Back"
+        }
+      },
+      "lamp_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "lamp_params": "Lamp parameters",
+          "lamp_remove": "Remove lamp",
+          "init": "Back"
+        }
+      },
+      "group_menu": {
+        "title": "Adaptive Light",
+        "menu_options": {
+          "group_edit": "Name and lamps",
+          "group_params": "Group parameters",
+          "group_remove": "Remove group",
+          "init": "Back"
+        }
+      }
+    },
+    "error": {
+      "bad_key": "Invalid key",
+      "duplicate_key": "Duplicate key",
+      "duplicate_lamp_entity": "The same light is used twice",
+      "unknown_zone": "Unknown zone",
+      "unknown_lamp": "Unknown lamp",
+      "lamp_zone_mismatch": "A group mixes lamps of different zones",
+      "bad_role": "Unknown sensor role",
+      "role_zone_mismatch": "Sensor role does not fit its zone",
+      "bad_sensor_domain": "The entity type does not fit the role",
+      "zone_needs_illuminance": "Every zone needs an illuminance sensor",
+      "bad_binding": "Invalid behaviour binding",
+      "no_zones": "Add at least one zone",
+      "group_needs_lamps": "Pick at least one lamp"
+    }
+  },
+  "selector": {
+    "yes_no": {
+      "options": {
+        "yes": "Yes",
+        "no": "No"
+      }
+    }
+  },
+  "services": {
+    "controller_tick": {
+      "name": "Run controller tick",
+      "description": "Run controller tick"
+    },
+    "clear_pauses": {
+      "name": "Clear manual pauses",
+      "description": "Clear manual pauses"
+    },
+    "openness_reset": {
+      "name": "Reset openness",
+      "description": "Reset openness"
+    },
+    "calibrate": {
+      "name": "Calibrate lamps (night)",
+      "description": "Calibrate lamps (night)"
+    },
+    "calibrate_cancel": {
+      "name": "Cancel calibration",
+      "description": "Cancel calibration"
+    },
+    "calibrate_apply": {
+      "name": "Apply calibration",
+      "description": "Apply calibration"
+    },
+    "calibrate_open_k": {
+      "name": "Calibrate open_k (day)",
+      "description": "Calibrate open_k (day)"
+    },
+    "set_param": {
+      "name": "Set a parameter",
+      "description": "Set a parameter"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+[PASS] S0 mode=Day lux=150 rad=300 ev=17 
+[PASS] S1 mode=Movie lux=3 rad=300 ev=17 
+[PASS] S2 mode=Away lux=60 rad=0 ev=17 
+[PASS] S3 mode=Movie lux=60 rad=100 ev=23 
+[PASS] S4 mode=Movie lux=500 rad=800 ev=23 
+[PASS] S5 mode=Movie lux=500 rad=300 ev=23 
+[PASS] S6 mode=Evening lux=0 rad=0 ev=23 
+[PASS] S7 mode=Movie lux=500 rad=800 ev=17 
+[PASS] S8 mode=Evening lux=500 rad=800 ev=23 
+[PASS] S9 mode=Day lux=0 rad=40 ev=17 
+[PASS] S10 mode=Movie lux=500 rad=100 ev=17 
+[PASS] S11 mode=Movie lux=3 rad=0 ev=17 
+[PASS] S12 mode=Night lux=3 rad=0 ev=23 
+[PASS] S13 mode=Evening lux=3 rad=40 ev=17 
+[PASS] S14 mode=Night lux=3 rad=40 ev=17 
+[PASS] S15 mode=Evening lux=3 rad=40 ev=23 
+[PASS] S16 mode=Evening lux=3 rad=0 ev=17 
+[PASS] S17 mode=Movie lux=500 rad=100 ev=17 
+[PASS] S18 mode=Evening lux=150 rad=40 ev=17 
+[PASS] S19 mode=Day lux=500 rad=800 ev=17 
+[PASS] S20 mode=Night lux=20 rad=0 ev=23 
+[PASS] S21 mode=Movie lux=500 rad=40 ev=17 
+[PASS] S22 mode=Away lux=500 rad=0 ev=17 
+[PASS] S23 mode=Evening lux=500 rad=40 ev=23 
+[PASS] S24 mode=Movie lux=500 rad=40 ev=17 
+[PASS] S25 mode=Day lux=150 rad=100 ev=17 
+[PASS] S26 mode=Movie lux=0 rad=800 ev=23 
+[PASS] S27 mode=Evening lux=500 rad=100 ev=23 
+[PASS] S28 mode=Evening lux=60 rad=300 ev=23 
+[PASS] S29 mode=Day lux=3 rad=40 ev=23 
+[PASS] S30 mode=Night lux=500 rad=0 ev=17 
+[PASS] S31 mode=Away lux=60 rad=800 ev=23 
+[PASS] S32 mode=Evening lux=60 rad=0 ev=23 
+[PASS] S33 mode=Night lux=60 rad=0 ev=23 
+[PASS] S34 mode=Night lux=60 rad=40 ev=17 
+[PASS] S35 mode=Day lux=60 rad=800 ev=17 
+[PASS] S36 mode=Day lux=20 rad=0 ev=23 
+[PASS] S37 mode=Day lux=3 rad=40 ev=17 
+[PASS] S38 mode=Away lux=150 rad=0 ev=17 
+[PASS] S39 mode=Away lux=150 rad=0 ev=17 
+[PASS] S* sensor parity over 40 scenarios 0 mismatching
+[PASS] C0 controller tick mode=Evening A={'top_left': 70, 'top_right': 70, 'bottom': 90, 'desk': 45, 'stick': 45} B={'top_left': 70, 'top_right': 70, 'bottom': 90, 'desk': 45, 'stick': 45} before={'top_left': 80, 'top_right': 80, 'bottom': 100, 'desk': 55, 'stick': 55}
+[PASS] C1 controller tick mode=Evening A={'top_left': 90, 'top_right': 60, 'bottom': 90, 'desk': 15, 'stick': 90} B={'top_left': 90, 'top_right': 60, 'bottom': 90, 'desk': 15, 'stick': 90} before={'top_left': 100, 'top_right': 55, 'bottom': 100, 'desk': 5, 'stick': 100}
+[PASS] C2 controller tick mode=Evening A={'top_left': 90, 'top_right': 45, 'bottom': 70, 'desk': 90, 'stick': 90} B={'top_left': 90, 'top_right': 45, 'bottom': 70, 'desk': 90, 'stick': 90} before={'top_left': 100, 'top_right': 55, 'bottom': 80, 'desk': 100, 'stick': 100}
+[PASS] C3 controller tick mode=Day A={'top_left': 70, 'top_right': 60, 'bottom': 90, 'desk': 90, 'stick': 90} B={'top_left': 70, 'top_right': 60, 'bottom': 90, 'desk': 90, 'stick': 90} before={'top_left': 80, 'top_right': 55, 'bottom': 100, 'desk': 100, 'stick': 100}
+[PASS] C4 controller tick mode=Day A={'top_left': 90, 'top_right': 60, 'bottom': 70, 'desk': 90, 'stick': 70} B={'top_left': 90, 'top_right': 60, 'bottom': 70, 'desk': 90, 'stick': 70} before={'top_left': 100, 'top_right': 55, 'bottom': 80, 'desk': 80, 'stick': 80}
+[PASS] C5 controller tick mode=Movie A={'top_left': 80, 'top_right': 100, 'bottom': 100, 'desk': 90, 'stick': 20} B={'top_left': 80, 'top_right': 100, 'bottom': 100, 'desk': 90, 'stick': 20} before={'top_left': 80, 'top_right': 100, 'bottom': 100, 'desk': 100, 'stick': 30}
+[PASS] C6 controller tick mode=Movie A={'top_left': 5, 'top_right': 30, 'bottom': 30, 'desk': 20, 'stick': 90} B={'top_left': 5, 'top_right': 30, 'bottom': 30, 'desk': 20, 'stick': 90} before={'top_left': 5, 'top_right': 30, 'bottom': 30, 'desk': 30, 'stick': 100}
+[PASS] C7 controller tick mode=Day A={'top_left': 70, 'top_right': 15, 'bottom': 90, 'desk': 20, 'stick': 20} B={'top_left': 70, 'top_right': 15, 'bottom': 90, 'desk': 20, 'stick': 20} before={'top_left': 80, 'top_right': 5, 'bottom': 100, 'desk': 30, 'stick': 30}
+[PASS] C8 controller tick mode=Evening A={'top_left': 15, 'top_right': 90, 'bottom': 15, 'desk': 70, 'stick': 45} B={'top_left': 15, 'top_right': 90, 'bottom': 15, 'desk': 70, 'stick': 45} before={'top_left': 5, 'top_right': 100, 'bottom': 5, 'desk': 80, 'stick': 55}
+[PASS] C9 controller tick mode=Movie A={'top_left': 80, 'top_right': 80, 'bottom': 5, 'desk': 70, 'stick': 45} B={'top_left': 80, 'top_right': 80, 'bottom': 5, 'desk': 70, 'stick': 45} before={'top_left': 80, 'top_right': 80, 'bottom': 5, 'desk': 80, 'stick': 55}
+[PASS] C* controller parity (10 ticks, apply on) mismatch=0, lamps moved on A=41
+waiting 62 s so the controller's own-change window (60 s) has passed
+[PASS] O1 manual change pauses lamp (B) 2026-11-14T10:01:26+00:00
+[PASS] O2 controller's own changes do not start a pause (B) {'top_left': 'unknown', 'top_right': 'unknown', 'bottom': 'unknown', 'desk': 'unknown', 'stick': 'unknown'}
+
+54/54 PASS

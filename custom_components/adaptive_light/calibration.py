@@ -1,0 +1,176 @@
+"""Night calibration of lux-per-percent (plan step 7) and daily open_k (step 7b).
+
+The fit and the checks are pure. ``run_calibration`` drives any object implementing
+``CalibrationIO`` (the real one wraps hass services; tests use a simulated room).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Protocol
+
+DEFAULT_LEVELS = (20, 50, 80)
+LEVELS = {
+    "top_left": (20, 50, 80),
+    "top_right": (20, 50, 80),
+    "bottom": (20, 50, 80),
+    "desk": (15, 40, 80),
+    "stick": (5, 15, 30),
+}
+MAX_BG = 5.0
+MIN_GROWTH = 1.0
+
+
+class CalibrationAborted(Exception):
+    pass
+
+
+@dataclass
+class LampFit:
+    key: str
+    base: float
+    lux: tuple[float, float, float]
+    k_fit: float
+    k_lo: float
+    k_hi: float
+    warnings: list[str] = field(default_factory=list)
+
+
+def fit_lamp(key, levels, lux, base_before, base_after) -> LampFit:
+    """Least squares through zero over three levels (same maths as the YAML script)."""
+    p1, p2, p3 = levels
+    l1, l2, l3 = lux
+    base = (base_before + base_after) / 2
+    d1, d2, d3 = l1 - base, l2 - base, l3 - base
+    k_fit = round((d1 * p1 + d2 * p2 + d3 * p3) / (p1 * p1 + p2 * p2 + p3 * p3), 3)
+    k_lo = round(d1 / p1, 3)
+    k_hi = round(d3 / p3, 3)
+    nonlin = round(k_hi / k_lo, 2) if k_lo > 0 else 0
+    warn = []
+    if abs(base_after - base_before) > 2:
+        warn.append(f"drift between background before and after {round(base_after - base_before, 1)} lx")
+    if not l3 > l1:
+        warn.append(f"not monotonic ({l1} / {l2} / {l3})")
+    if k_lo > 0 and (nonlin < 0.6 or nonlin > 1.6):
+        warn.append(f"nonlinear, k(high)/k(low) = {nonlin}")
+    return LampFit(key, base, (l1, l2, l3), k_fit, k_lo, k_hi, warn)
+
+
+class CalibrationIO(Protocol):
+    async def preconditions_ok(self) -> bool: ...  # sun < -8, mode Night, presence off
+    async def snapshot(self) -> None: ...
+    async def restore(self) -> None: ...
+    async def all_off(self) -> None: ...
+    async def set_lamp(self, key: str, pct: int | None) -> None: ...  # None = off
+    async def read_lux(self) -> float | None: ...
+    async def presence_on(self) -> bool: ...
+    async def sleep(self, seconds: float) -> None: ...
+
+
+@dataclass
+class CalibrationResult:
+    bg0: float
+    fits: dict[str, LampFit]
+
+    @property
+    def candidates(self) -> dict[str, float]:
+        return {k: f.k_fit for k, f in self.fits.items()}
+
+
+async def run_calibration(
+    io: CalibrationIO,
+    settle_s: float = 60,
+    lamps: "dict[str, tuple[int, int, int]] | None" = None,
+    progress=None,
+) -> CalibrationResult:
+    """Never writes parameters; returns candidates. Always restores the lamps (also on cancel / error).
+
+    ``lamps`` maps lamp key -> three test levels; default is the plan's five lamps. The set of keys is a
+    parameter so the calibration does not depend on how lamps end up being configured.
+    """
+    lamps = lamps or LEVELS
+    if not await io.preconditions_ok():
+        raise CalibrationAborted("preconditions not met (sun below -8, mode Night, nobody present)")
+    await io.snapshot()
+    try:
+        await io.all_off()
+        await io.sleep(round(settle_s * 1.5))
+        bg0 = await io.read_lux()
+        if bg0 is None or bg0 > MAX_BG:
+            raise CalibrationAborted(f"background {bg0} lx with all lamps off (allowed 0..{MAX_BG})")
+        fits: dict[str, LampFit] = {}
+        for key, levels in lamps.items():
+            if progress:
+                progress(key)
+            before = await io.read_lux()
+            if before is None or before > MAX_BG or await io.presence_on():
+                raise CalibrationAborted(f"before {key}: background {before} lx or presence detected")
+            readings = []
+            for pct in levels:
+                await io.set_lamp(key, pct)
+                await io.sleep(settle_s)
+                readings.append(await io.read_lux() or 0.0)
+            await io.set_lamp(key, None)
+            await io.sleep(settle_s)
+            after = await io.read_lux() or 0.0
+            fit = fit_lamp(key, levels, tuple(readings), before, after)
+            if fit.lux[2] - fit.base < MIN_GROWTH or await io.presence_on():
+                raise CalibrationAborted(f"{key}: no growth or presence detected")
+            fits[key] = fit
+        return CalibrationResult(bg0, fits)
+    finally:
+        await io.restore()
+
+
+def open_k_candidate(lux: float, daylight: float) -> float:
+    """light_open_calibrate: lux / daylight clamped to the helper range, rounded to 0.01."""
+    return round(min(max(lux / (daylight or 1), 0.05), 20), 2)
+
+
+def levels_for(key: str) -> tuple[int, int, int]:
+    return LEVELS.get(key, DEFAULT_LEVELS)
+
+
+# ---- applying candidates (pure) -------------------------------------------------
+
+K_RANGE = (0.001, 100.0)
+DARK_RANGE = (0.0, 20.0)
+
+
+class CandidateError(ValueError):
+    pass
+
+
+def validate_candidates(cand: dict[str, float], known_keys) -> dict[str, float]:
+    """Return clamped k per known lamp plus 'bg0'. Raises when nothing usable is there."""
+    if not cand or "bg0" not in cand:
+        raise CandidateError("no calibration candidates; run the calibration first")
+    out = {}
+    for key in known_keys:
+        if key in cand:
+            lo, hi = K_RANGE
+            out[key] = round(min(max(cand[key], lo), hi), 3)
+    if not out:
+        raise CandidateError("candidates contain none of the configured lamps")
+    out["bg0"] = round(min(max(cand["bg0"], DARK_RANGE[0]), DARK_RANGE[1]), 2)
+    return out
+
+
+def open_k_blockers(*, mode: str | None, daylight: float | None, any_lamp_on: bool, lux: float | None) -> str | None:
+    """Reason why light_open_calibrate must not run now, or None."""
+    if mode != "Day":
+        return "mode is not Day"
+    if daylight is None or daylight < 40:
+        return "daylight factor below 40"
+    if any_lamp_on:
+        return "a lamp is on"
+    if lux is None:
+        return "no lux reading"
+    return None
+
+
+def summary_message(result: CalibrationResult) -> str:
+    lines = [f"background {result.bg0} lx"]
+    for k, f in result.fits.items():
+        w = f"  ({'; '.join(f.warnings)})" if f.warnings else ""
+        lines.append(f"{k}: k={f.k_fit} (lux {f.lux[0]}/{f.lux[1]}/{f.lux[2]}, base {round(f.base, 1)}){w}")
+    return "\n".join(lines)

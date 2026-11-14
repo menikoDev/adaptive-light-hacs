@@ -1,0 +1,124 @@
+title: Adaptive light
+views:
+- title: Adaptive light
+  path: overview
+  icon: mdi:brightness-auto
+  cards:
+  - type: entities
+    title: Control
+    entities:
+    - switch.light_adaptive_enabled
+    - switch.light_adaptive_apply
+    - switch.light_adaptive_scenarios
+    - sensor.daylight_factor
+    - type: button
+      name: Clear all pauses
+      tap_action:
+        action: perform-action
+        perform_action: adaptive_light.clear_pauses
+    - type: button
+      name: Reset openness
+      tap_action:
+        action: perform-action
+        perform_action: adaptive_light.openness_reset
+    - type: button
+      name: Run one controller tick
+      tap_action:
+        action: perform-action
+        perform_action: adaptive_light.controller_tick
+  - type: markdown
+    content: '**Shadow mode:** enabled on, apply off: the controller only writes to the logbook what it would do. Switch apply
+      on to let it move the lamps (10 % per minute). Each lamp has its own auto switch.'
+  - type: logbook
+    title: Adaptive light (shadow) log
+    hours_to_show: 6
+    entities:
+    - sensor.daylight_factor
+- title: Living room
+  path: living_room
+  icon: mdi:lightbulb-group
+  cards:
+  - type: entities
+    title: 'Living room: pipeline'
+    entities:
+    - sensor.living_room_ambient_lux
+    - sensor.light_need
+    - sensor.light_ambient_trust
+    - sensor.light_openness
+    - sensor.light_openness_raw
+    - binary_sensor.light_evening_quiet
+    - sensor.daylight_factor
+  - type: history-graph
+    title: Ambient, need, trust
+    hours_to_show: 12
+    entities:
+    - sensor.living_room_ambient_lux
+    - sensor.light_need
+    - sensor.light_ambient_trust
+    - sensor.light_openness
+  - type: entities
+    title: 'Lamps: target and automatic control'
+    entities:
+    - type: section
+      label: Top Left
+    - sensor.light_target_top_left
+    - switch.light_top_left_auto
+    - sensor.light_top_left_pause_until
+    - number.light_k_top_left
+    - type: section
+      label: Top Right
+    - sensor.light_target_top_right
+    - switch.light_top_right_auto
+    - sensor.light_top_right_pause_until
+    - number.light_k_top_right
+    - type: section
+      label: Bottom
+    - sensor.light_target_bottom
+    - switch.light_bottom_auto
+    - sensor.light_bottom_pause_until
+    - number.light_k_bottom
+    - type: section
+      label: Desk
+    - sensor.light_target_desk
+    - switch.light_desk_auto
+    - sensor.light_desk_pause_until
+    - number.light_k_desk
+    - type: section
+      label: Stick
+    - sensor.light_target_stick
+    - switch.light_stick_auto
+    - sensor.light_stick_pause_until
+    - number.light_k_stick
+  - type: entities
+    title: Calibration
+    entities:
+    - sensor.light_calibration
+    - type: button
+      name: Calibrate lamps (night)
+      tap_action:
+        action: perform-action
+        perform_action: adaptive_light.calibrate
+        data:
+          zone: living_room
+          settle_s: 60
+    - type: button
+      name: Apply calibration
+      tap_action:
+        action: perform-action
+        perform_action: adaptive_light.calibrate_apply
+        data:
+          zone: living_room
+    - type: button
+      name: Calibrate open_k (day, blinds open)
+      tap_action:
+        action: perform-action
+        perform_action: adaptive_light.calibrate_open_k
+        data:
+          zone: living_room
+    - type: button
+      name: Cancel calibration
+      tap_action:
+        action: perform-action
+        perform_action: adaptive_light.calibrate_cancel
+        data:
+          zone: living_room

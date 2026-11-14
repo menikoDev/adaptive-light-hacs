@@ -1,0 +1,25 @@
+controller_tick:
+  fields:
+    openness: {default: false, selector: {boolean: {}}}
+clear_pauses:
+openness_reset:
+calibrate:
+  fields:
+    zone: {selector: {text: {}}}
+    settle_s: {default: 60, selector: {number: {min: 0, max: 600, unit_of_measurement: s}}}
+    wait: {default: false, selector: {boolean: {}}}
+calibrate_cancel:
+  fields:
+    zone: {selector: {text: {}}}
+calibrate_apply:
+  fields:
+    zone: {selector: {text: {}}}
+calibrate_open_k:
+  fields:
+    zone: {selector: {text: {}}}
+set_param:
+  fields:
+    level: {required: true, selector: {select: {options: [global, zone, group, lamp]}}}
+    target: {selector: {text: {}}}
+    name: {required: true, selector: {text: {}}}
+    value: {selector: {text: {}}}
