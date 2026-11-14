@@ -7,6 +7,28 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-14
+
+### Changed
+- Лампа без прироста освещённости (меньше 1 лк на самом высоком тестовом уровне, `MIN_GROWTH`) больше не прерывает калибровку зоны. Раньше `living_room_top_lamp_bottom` рядом с высоко висящим датчиком останавливала всю калибровку с ошибкой «the lamp does not change the illuminance (no growth)». Теперь все лампы проходят все уровни (`calib_levels`, `settle_s` без изменений), такая лампа не подгоняется, помечается `base` («не измерено») и сохраняет базовое `k`; остальные лампы калибруются как обычно.
+- Базовое `k` лампы: её текущее значение `k` (последнее применённое калибровкой или заданное вручную, по умолчанию 0.1), в пределах 0.001 до 100. `k = 0` не записывается никогда.
+- Если прироста нет ни у одной лампы зоны, калибровка не прерывается: зона помечается «по базе» (`calibration_source: base`, статус `done_base`), `dark_lux_offset` не предлагается и не записывается. Если часть ламп на базе: `mixed`, статус `done_mixed`. Все лампы измерены: `measured`, статус `done`, как раньше.
+- `calibrate_apply` записывает базовые значения явно и сообщает об этом (уведомление «Light calibration applied with base values», журнал, ответ службы: `calibration_source`, `base_lamps`, `dark_lux_offset_written`). `dark_lux_offset` пишется только если что-то было измерено.
+- Предупреждение о ярком фоне уточнено: `dark_lux_offset` будет записан, только если измерена хотя бы одна лампа.
+
+### Added
+- Атрибуты `sensor.<зона>_light_calibration`: `calibration_source` (`measured` / `base` / `mixed`), `base_lamps`, `lamp_sources`, `applied`. Источник восстанавливается из сохранённых кандидатов после перезапуска. Маркеры `_base_<лампа>` в сохранённых кандидатах не показываются в `candidates`.
+- Постоянное уведомление «Light calibration: base value used in <зона>» (en и ru): какие лампы остались на базе, почему (датчик далеко или высоко, лампа слабая) и что делать (увеличить `calib_levels`, например `40,70,100`, и/или `settle_s`, поднести датчик ближе, задать `k` вручную).
+- `run_calibration(..., base_k=...)`, `CalibrationResult.source` / `base_lamps` / `record()`, `LampFit.source`, `calibration.candidate_meta`, `calibration.base_notice`, `AdaptiveLightManager.calibration_summary`.
+- Описания службы `calibrate_apply` и дополнение описания `calibrate` в `strings.json` и переводах en и ru.
+- Тесты: одна лампа без прироста, все лампы без прироста, смешанный случай, все уровни проходятся и у лампы без прироста, ограничение базового `k` диапазоном, маркеры базы в хранилище, уведомления en и ru, `calibrate_apply` с базой и без `dark_lux_offset`, отсутствие показания датчика по-прежнему прерывает калибровку.
+
+### Removed
+- Прерывание калибровки «the lamp does not change the illuminance (no growth)». Заменённый тест `test_calibration_aborts_and_restores_on_a_dead_lamp` теперь проверяет базовое значение.
+
+### Not changed
+- Технические отказы остаются: зона без датчика освещённости, калибровка уже идёт, неизвестная зона, нет показания датчика (калибровка прерывается, лампы восстанавливаются).
+
 ## [0.3.1] - 2026-11-14
 
 ### Changed
@@ -58,7 +80,8 @@
 - Сохранение состояния (паузы, openness, кандидаты калибровки) между перезапусками.
 - Переводы ru/en, YAML панели управления, инструкция по миграции с YAML-плана.
 
-[Unreleased]: https://github.com/menikoDev/adaptive-light-hacs/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/menikoDev/adaptive-light-hacs/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/menikoDev/adaptive-light-hacs/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/menikoDev/adaptive-light-hacs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/menikoDev/adaptive-light-hacs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/menikoDev/adaptive-light-hacs/releases/tag/v0.2.0

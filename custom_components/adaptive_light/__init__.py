@@ -89,7 +89,13 @@ def _register_services(hass: HomeAssistant) -> None:
         await svc.async_calibrate(hass, m, z, c.data["settle_s"], c.data["wait"])
         return {"zone": z, "warnings": m.calibration_warnings.get(z, []), "caution": calibration.CAUTION_EN, "caution_ru": calibration.CAUTION_RU}
     async def cancel(m, c): await svc.async_calibrate_cancel(hass, m, c.data.get("zone"))
-    async def apply(m, c): return {"applied": await svc.async_calibrate_apply(hass, m, c.data.get("zone"))}
+    async def apply(m, c):
+        z = svc.pick_zone(m, c.data.get("zone"))
+        ok = await svc.async_calibrate_apply(hass, m, z)
+        info = m.calibration_summary(z)
+        return {"zone": z, "applied": ok, "calibration_source": info.get("source"), "base_lamps": info.get("base_lamps", []),
+                "dark_lux_offset_written": "bg0" in ok,
+                "note": "base_lamps got their base k explicitly: it is NOT a measurement" if info.get("base_lamps") else ""}
     async def openk(m, c): return {"open_k": await svc.async_calibrate_open_k(hass, m, c.data.get("zone"))}
     async def setp(m, c):
         m.set_param(c.data["level"], c.data.get("target", ""), c.data["name"], c.data.get("value"))

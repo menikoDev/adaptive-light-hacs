@@ -272,9 +272,77 @@ def test_calibration_with_bright_background_finishes_with_warning():
     assert m.state.candidates["bedroom"]["bg0"] == pytest.approx(9, abs=0.01)
 
 
-def test_calibration_aborts_when_a_lamp_changes_nothing_and_restores():
+def notes_with(notes, word): return [n for n in notes if word in n["title"]]
+
+
+def test_single_lamp_without_growth_is_base_and_the_rest_is_measured():
     m, hass, sim = calib_setup()
-    sim.K = {**sim.K, "bed_ceiling": 0.0}
+    sim.K = {**sim.K, "bed_ceiling": 0.0}                           # the lamp next to a high sensor: no effect on the lux
+    m.set_param("lamp", "bed_ceiling", "k", 0.25)                   # the last applied / hand-set k
+    hass.states["light.bed_night"] = St("on", brightness=40)
+    notes = record_notes(hass)
+    run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
+    assert m.calibration_status["bedroom"] == "done_mixed"
+    cand = m.state.candidates["bedroom"]
+    assert cand["bed_ceiling"] == 0.25 and cand["_base_bed_ceiling"] == 1.0 and cand["bed_night"] == pytest.approx(0.05, abs=0.002)
+    assert "bg0" in cand and "_base_bed_night" not in cand
+    info = m.calibration_summary("bedroom")
+    assert info["source"] == "mixed" and info["base_lamps"] == ["bed_ceiling"] and info["lamp_sources"] == {"bed_ceiling": "base", "bed_night": "measured"}
+    base = notes_with(notes, "base value used")
+    assert len(base) == 1 and base[0]["notification_id"].endswith("_base") and "bed_ceiling" in base[0]["message"]
+    assert "calib_levels" in base[0]["message"] and "settle_s" in base[0]["message"] and "Базовое" in base[0]["message"]
+    assert "BASE k (not measured)=0.25" in notes_with(notes, "Light calibration: bedroom")[0]["message"]
+    assert hass.states["light.bed_night"].state == "on"             # no abort: lamps restored as always
+    ok = run(svc.async_calibrate_apply(hass, m, "bedroom"))
+    assert ok["bed_ceiling"] == 0.25 and ok["bed_night"] == pytest.approx(0.05, abs=0.002) and "bg0" in ok
+    assert m.cfg.lamp_param("bed_ceiling", "k") == 0.25
+    assert m.calibration_summary("bedroom")["applied"] is True
+    assert len(notes_with(notes, "applied with base values")) == 1
+
+
+def test_all_lamps_without_growth_keep_base_k_and_never_touch_dark_offset(caplog):
+    m, hass, sim = calib_setup()
+    sim.K = {"bed_ceiling": 0.0, "bed_night": 0.0}
+    m.set_param("zone", "bedroom", "dark_lux_offset", 2)
+    m.set_param("lamp", "bed_night", "k", 0.07)
+    notes = record_notes(hass)
+    with caplog.at_level("WARNING"):
+        run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
+    assert m.calibration_status["bedroom"] == "done_base"
+    cand = m.state.candidates["bedroom"]
+    assert "bg0" not in cand and cand["bed_night"] == 0.07 and cand["bed_ceiling"] == m.cfg.lamp_param("bed_ceiling", "k") == 0.1
+    assert all(cand[k] > 0 for k in ("bed_ceiling", "bed_night"))
+    assert m.calibration_summary("bedroom")["source"] == "base" and sorted(m.calibration_summary("bedroom")["base_lamps"]) == ["bed_ceiling", "bed_night"]
+    assert "no growth" in caplog.text
+    msg = notes_with(notes, "base value used")[0]["message"]
+    assert "whole zone is calibrated 'by base'" in msg and "dark_lux_offset is NOT proposed" in msg and "по базе" in msg
+    ok = run(svc.async_calibrate_apply(hass, m, "bedroom"))
+    assert "bg0" not in ok and ok == {"bed_ceiling": 0.1, "bed_night": 0.07}
+    assert m.cfg.zone_param("bedroom", "dark_lux_offset") == 2          # untouched
+    assert m.cfg.lamp_param("bed_night", "k") == 0.07
+    applied = notes_with(notes, "applied with base values")[0]["message"]
+    assert "NOT written" in applied and "НЕ записан" in applied
+
+
+def test_base_summary_is_derived_from_stored_candidates_after_restart():
+    m, hass, sim = calib_setup()
+    sim.K = {**sim.K, "bed_night": 0.0}
+    run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
+    m.calibration_info.clear()                                           # as after a restart: only the candidates are persisted
+    info = m.calibration_summary("bedroom")
+    assert info["source"] == "mixed" and info["base_lamps"] == ["bed_night"] and info["lamp_sources"]["bed_ceiling"] == "measured"
+    m.state.candidates.clear(); m.calibration_info.clear()
+    assert m.calibration_summary("bedroom") == {}
+
+
+def test_no_illuminance_reading_still_aborts_the_zone_calibration():
+    m, hass, sim = calib_setup()
+    hass.states["sensor.bedroom_lux"] = St("unavailable")
+    sim_call = hass.services.async_call
+    async def call(domain, service, data, blocking=False, context=None):
+        await sim_call(domain, service, data, blocking=blocking, context=context)
+        hass.states["sensor.bedroom_lux"] = St("unavailable")
+    hass.services.async_call = call
     hass.states["light.bed_night"] = St("on", brightness=40)
     run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
     assert m.calibration_status["bedroom"] == "aborted" and "bedroom" not in m.state.candidates

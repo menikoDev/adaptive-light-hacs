@@ -54,8 +54,10 @@ def test_validate_candidates_clamps_and_filters():
         cal.validate_candidates(None, ["desk"])
     with pytest.raises(cal.CandidateError):
         cal.validate_candidates({"bg0": 1, "zzz": 2}, ["desk"])
-    with pytest.raises(cal.CandidateError):
-        cal.validate_candidates({"desk": 1}, ["desk"])
+    assert cal.validate_candidates({"desk": 1, "_base_desk": 1.0}, ["desk"]) == {"desk": 1.0}   # no bg0 (base run): no dark offset
+    assert cal.candidate_meta({"desk": 1, "stick": 2, "_base_desk": 1.0}, ["desk", "stick"]) == {"source": "mixed", "base_lamps": ["desk"]}
+    assert cal.candidate_meta({"desk": 1, "_base_desk": 1.0}, ["desk"])["source"] == "base"
+    assert cal.candidate_meta({"desk": 1, "bg0": 1}, ["desk"]) == {"source": "measured", "base_lamps": []}
 
 
 def test_open_k_blockers():
@@ -92,3 +94,9 @@ def test_cancel_still_restores_lamps():
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(cal.run_calibration(room, 1, lamps={"a": (20, 50, 80)}))
     assert room.restored == 1 and room.pct == {"a": 33}
+
+
+def test_base_markers_survive_the_store_round_trip():
+    rec = {"bed": 0.1, "_base_bed": 1.0, "_ts": NOW - 5}
+    r = PersistedState.from_dict(PersistedState(candidates={"living_room": rec}).to_dict(), now_ts=NOW)
+    assert r.candidates["living_room"] == rec and cal.candidate_meta(rec, ["bed"])["source"] == "base"

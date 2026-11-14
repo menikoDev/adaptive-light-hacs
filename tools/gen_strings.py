@@ -122,13 +122,19 @@ FIELD = {"name": ("Name", "Название"), "area": ("Area (optional)", "Об
          "zone": ("Zone", "Зона"), "lamp": ("Lamp", "Лампа"), "group": ("Group", "Группа")}
 CALIB_DESC = (
     "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores "
-    "candidates; nothing is applied until calibrate_apply. It refuses to start only when the zone has no illuminance sensor or "
+    "candidates; nothing is applied until calibrate_apply. A lamp whose test levels raise the illuminance by less than 1 lx "
+    "(the sensor is far or high, the lamp is weak) does not stop the calibration: it is not measured and keeps its base k (its "
+    "current value, 0.1 by default), marked as base; if no lamp of the zone shows growth the whole zone is calibrated 'by base' and "
+    "no dark_lux_offset is proposed (see the calibration_source and base_lamps attributes of the calibration sensor). It refuses to start only when the zone has no illuminance sensor or "
     "a calibration of the zone is already running. Darkness, mode Night, an empty room and a switched-off TV give the best result, "
     "but none of them is required: unfavourable conditions only produce a warning (log, persistent notification, the warnings "
     "attribute of the calibration sensor and the service response). Do not turn the lamps on or off and do not change them by hand "
     "while the calibration runs. Daylight, people in the room and a running TV or monitor distort the result.",
     "Измеряет люксы на 1% у каждой лампы зоны на трёх уровнях (около 4 минут на лампу при времени ожидания по умолчанию) и сохраняет "
-    "кандидатов; пока не вызвана calibrate_apply, ничего не применяется. Отказ только по техническим причинам: у зоны нет датчика "
+    "кандидатов; пока не вызвана calibrate_apply, ничего не применяется. Лампа, у которой на тестовых уровнях освещённость выросла "
+    "меньше чем на 1 лк (датчик далеко или высоко, лампа слабая), калибровку не останавливает: она не измеряется и сохраняет базовое "
+    "k (текущее значение, по умолчанию 0.1) с пометкой base; если прироста нет ни у одной лампы зоны, вся зона калибруется «по базе» "
+    "и dark_lux_offset не предлагается (атрибуты calibration_source и base_lamps у датчика калибровки). Отказ только по техническим причинам: у зоны нет датчика "
     "освещённости или калибровка зоны уже идёт. Лучший результат дают темнота, режим Night, пустая комната и выключенный ТВ, "
     "но ничего из этого не обязательно: неблагоприятные условия дают только предупреждение (журнал, постоянное уведомление, атрибут "
     "warnings у датчика калибровки и ответ службы). Пока идёт калибровка, не включайте и не выключайте лампы и не меняйте их "
@@ -139,6 +145,13 @@ CALIB_FIELDS = {
     "wait": ("Wait until the calibration finishes (can take many minutes). Do not touch the lamps meanwhile.",
              "Ждать окончания калибровки (может занять много минут). Не трогайте лампы в это время."),
 }
+APPLY_DESC = (
+    "Writes the calibration candidates into the k of the lamps and, when something was measured, into dark_lux_offset of the zone. "
+    "Lamps marked base (no growth, not measured) get their base k written explicitly; it is NOT a measurement. A run where no lamp "
+    "showed growth never writes dark_lux_offset. The response lists the base lamps and whether dark_lux_offset was written.",
+    "Записывает кандидатов калибровки в k ламп и, если что-то было измерено, в dark_lux_offset зоны. Лампам с пометкой base (нет "
+    "прироста, не измерены) явно записывается базовое k; это НЕ измерение. Запуск, где ни одна лампа не показала прироста, "
+    "dark_lux_offset не пишет никогда. В ответе перечислены лампы base и записан ли dark_lux_offset.")
 SERV = {
     "controller_tick": ("Run controller tick", "Один такт контроллера"), "clear_pauses": ("Clear manual pauses", "Сбросить паузы"),
     "openness_reset": ("Reset openness", "Сбросить открытость"), "calibrate": ("Calibrate lamps (night)", "Калибровка ламп (ночь)"),
@@ -185,6 +198,7 @@ def build(i: int) -> dict:
            "selector": {"yes_no": {"options": {"yes": "Yes" if i == 0 else "Да", "no": "No" if i == 0 else "Нет"}}},
            "services": {n: {"name": v[i], "description": v[i]} for n, v in SERV.items()}}
     out["services"]["calibrate"]["description"] = CALIB_DESC[i]
+    out["services"]["calibrate_apply"]["description"] = APPLY_DESC[i]
     out["services"]["calibrate"]["fields"] = {f: {"name": f, "description": d[i]} for f, d in CALIB_FIELDS.items()}
     return out
 

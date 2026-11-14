@@ -132,15 +132,24 @@ async def async_calibrate(hass, mgr, zone: str | None = None, settle_s: float = 
         start += "Warnings:\n" + "\n".join(f"- {w}" for w in warns) + "\n\n"
     await _notify(hass, f"Light calibration started: {z}", start + calibration.CAUTION, f"adaptive_light_calib_{z}_warning")
     lamps = {k: P.parse_levels(mgr._lamp_p[k]["calib_levels"]) for k in mgr.cfg.lamps_in_zone(z)}
+    base_k = {k: float(mgr.cfg.lamp_param(k, "k")) for k in lamps}
+    mgr.calibration_info.pop(z, None)
 
     async def job():
         try:
             mgr.set_calibration_status(z, "running")
-            res = await calibration.run_calibration(io, settle_s, lamps=lamps, progress=lambda k: mgr.set_calibration_status(z, f"running {k}"))
+            res = await calibration.run_calibration(io, settle_s, lamps=lamps, base_k=base_k,
+                                              progress=lambda k: mgr.set_calibration_status(z, f"running {k}"))
             mgr.calibration_warnings[z] = list(dict.fromkeys(warns + res.warnings))
-            mgr.state.candidates[z] = {"bg0": res.bg0, **res.candidates, "_ts": mgr._now().timestamp()}
+            mgr.state.candidates[z] = res.record(mgr._now().timestamp())
+            mgr.calibration_info[z] = {"source": res.source, "base_lamps": res.base_lamps,
+                                       "lamp_sources": {k: f.source for k, f in res.fits.items()}}
             mgr.mark_dirty()
-            mgr.set_calibration_status(z, "done")
+            mgr.set_calibration_status(z, {calibration.SOURCE_MEASURED: "done", calibration.SOURCE_MIXED: "done_mixed",
+                                           calibration.SOURCE_BASE: "done_base"}[res.source])
+            if res.base_lamps:
+                _LOGGER.warning("calibration of zone %s: no growth for %s, base k kept (not measured)", z, ", ".join(res.base_lamps))
+                await _notify(hass, f"Light calibration: base value used in {z}", calibration.base_notice(res), f"adaptive_light_calib_{z}_base")
             await _notify(hass, f"Light calibration: {z}", calibration.summary_message(res) +
                           "\n\nNothing applied yet: run adaptive_light.calibrate_apply.", f"adaptive_light_calib_{z}")
         except calibration.CalibrationAborted as e:
@@ -170,7 +179,12 @@ async def async_calibrate_cancel(hass, mgr, zone: str | None = None) -> bool:
 
 
 async def async_calibrate_apply(hass, mgr, zone: str | None = None) -> dict:
-    """Write the candidates into the lamp parameters (k) and the zone parameter dark_lux_offset."""
+    """Write the candidates into the lamp parameters (k) and the zone parameter dark_lux_offset.
+
+    Lamps on their base k (no growth, not measured) are written explicitly with that base value; the dark_lux_offset is
+    written only when the run measured something (never from a run where no lamp showed growth). The returned dict has
+    the applied k per lamp and 'bg0' only when dark_lux_offset was written; ``mgr.calibration_info[zone]`` tells what was
+    measured and what was base."""
     z = pick_zone(mgr, zone)
     cand = mgr.state.candidates.get(z)
     if not cand:
@@ -179,16 +193,27 @@ async def async_calibrate_apply(hass, mgr, zone: str | None = None) -> dict:
         ok = calibration.validate_candidates({k: v for k, v in cand.items() if k != "_ts"}, mgr.cfg.lamps_in_zone(z))
     except calibration.CandidateError as e:
         raise ValueError(str(e)) from e
+    meta = calibration.candidate_meta(cand, mgr.cfg.lamps_in_zone(z))
     raw = mgr.cfg.to_dict()
     for x in raw["lamps"]:
         if x["key"] in ok:
             x.setdefault("params", {})["k"] = ok[x["key"]]
     for zz in raw["zones"]:
-        if zz["key"] == z:
+        if zz["key"] == z and "bg0" in ok:
             zz.setdefault("params", {})["dark_lux_offset"] = ok["bg0"]
     mgr._replace_config(raw)
     mgr.state.candidates.pop(z, None)
+    mgr.calibration_info[z] = {**meta, "lamp_sources": {k: (calibration.SOURCE_BASE if k in meta["base_lamps"] else calibration.SOURCE_MEASURED)
+                                                        for k in ok if k != "bg0"}, "applied": True}
     mgr.mark_dirty()
+    if meta["base_lamps"]:
+        _LOGGER.warning("calibrate_apply zone %s: base k written for %s (not measured)%s", z, ", ".join(meta["base_lamps"]),
+                        "" if "bg0" in ok else "; dark_lux_offset not written")
+        text = (f"Zone {z}: applied. Lamps on the BASE k, not measured: {', '.join(meta['base_lamps'])}."
+                f"{'' if 'bg0' in ok else ' dark_lux_offset was NOT written (no lamp showed growth).'}\n\n"
+                f"Зона {z}: применено. Лампы на БАЗОВОМ k, не измерены: {', '.join(meta['base_lamps'])}."
+                f"{'' if 'bg0' in ok else ' dark_lux_offset НЕ записан (ни одна лампа не показала прироста).'}")
+        await _notify(hass, f"Light calibration applied with base values: {z}", text, f"adaptive_light_calib_{z}_applied")
     return ok
 
 

@@ -598,7 +598,7 @@
     },
     "calibrate": {
       "name": "Calibrate lamps (night)",
-      "description": "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores candidates; nothing is applied until calibrate_apply. It refuses to start only when the zone has no illuminance sensor or a calibration of the zone is already running. Darkness, mode Night, an empty room and a switched-off TV give the best result, but none of them is required: unfavourable conditions only produce a warning (log, persistent notification, the warnings attribute of the calibration sensor and the service response). Do not turn the lamps on or off and do not change them by hand while the calibration runs. Daylight, people in the room and a running TV or monitor distort the result.",
+      "description": "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores candidates; nothing is applied until calibrate_apply. A lamp whose test levels raise the illuminance by less than 1 lx (the sensor is far or high, the lamp is weak) does not stop the calibration: it is not measured and keeps its base k (its current value, 0.1 by default), marked as base; if no lamp of the zone shows growth the whole zone is calibrated 'by base' and no dark_lux_offset is proposed (see the calibration_source and base_lamps attributes of the calibration sensor). It refuses to start only when the zone has no illuminance sensor or a calibration of the zone is already running. Darkness, mode Night, an empty room and a switched-off TV give the best result, but none of them is required: unfavourable conditions only produce a warning (log, persistent notification, the warnings attribute of the calibration sensor and the service response). Do not turn the lamps on or off and do not change them by hand while the calibration runs. Daylight, people in the room and a running TV or monitor distort the result.",
       "fields": {
         "zone": {
           "name": "zone",
@@ -620,7 +620,7 @@
     },
     "calibrate_apply": {
       "name": "Apply calibration",
-      "description": "Apply calibration"
+      "description": "Writes the calibration candidates into the k of the lamps and, when something was measured, into dark_lux_offset of the zone. Lamps marked base (no growth, not measured) get their base k written explicitly; it is NOT a measurement. A run where no lamp showed growth never writes dark_lux_offset. The response lists the base lamps and whether dark_lux_offset was written."
     },
     "calibrate_open_k": {
       "name": "Calibrate open_k (day)",

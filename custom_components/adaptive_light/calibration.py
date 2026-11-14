@@ -2,7 +2,12 @@
 
 Calibration conditions (sun, mode, presence, TV, background light) are advice, not gates: they produce
 warnings and the user decides. Only technical impossibilities refuse or abort (no illuminance sensor,
-already running, a lamp that does not change the lux at all).
+already running, no illuminance reading).
+
+A lamp that does not raise the lux above MIN_GROWTH (sensor too far or too high, lamp too weak) is not fitted:
+it keeps its BASE k (its current ``k`` parameter, i.e. the last applied or hand-set value, the default 0.1 when
+nothing was ever set) and is marked ``source = "base"``. The zone is "measured" (all lamps fitted), "mixed" or
+"base" (no lamp fitted; then no ``dark_lux_offset`` candidate is produced either). k = 0 is never produced.
 
 The fit and the checks are pure. ``run_calibration`` drives any object implementing
 ``CalibrationIO`` (the real one wraps hass services; tests use a simulated room).
@@ -23,6 +28,9 @@ LEVELS = {
 MAX_BG = 5.0
 SUN_LIMIT = -8.0
 MIN_GROWTH = 1.0
+DEFAULT_BASE_K = 0.1   # equals the default of the lamp parameter ``k`` (params.py); used only when no base k is passed
+SOURCE_MEASURED, SOURCE_BASE, SOURCE_MIXED = "measured", "base", "mixed"
+BASE_PREFIX = "_base_"   # candidates are floats only: lamp X in base mode is stored as {"_base_X": 1.0}
 
 
 class CalibrationAborted(Exception):
@@ -66,6 +74,7 @@ class LampFit:
     k_lo: float
     k_hi: float
     warnings: list[str] = field(default_factory=list)
+    source: str = SOURCE_MEASURED
 
 
 def fit_lamp(key, levels, lux, base_before, base_after) -> LampFit:
@@ -106,7 +115,25 @@ class CalibrationResult:
 
     @property
     def candidates(self) -> dict[str, float]:
+        """k per lamp: the fitted value for measured lamps, the base k for base lamps."""
         return {k: f.k_fit for k, f in self.fits.items()}
+
+    @property
+    def base_lamps(self) -> list[str]:
+        return [k for k, f in self.fits.items() if f.source == SOURCE_BASE]
+
+    @property
+    def source(self) -> str:
+        n = len(self.base_lamps)
+        return SOURCE_BASE if self.fits and n == len(self.fits) else SOURCE_MIXED if n else SOURCE_MEASURED
+
+    def record(self, ts: float) -> dict[str, float]:
+        """Candidates as stored (floats only). No ``bg0`` when nothing was measured: a no-growth run never proposes dark_lux_offset."""
+        out = {"bg0": self.bg0} if self.source != SOURCE_BASE else {}
+        out.update(self.candidates)
+        out.update({BASE_PREFIX + k: 1.0 for k in self.base_lamps})
+        out["_ts"] = ts
+        return out
 
 
 async def run_calibration(
@@ -114,8 +141,11 @@ async def run_calibration(
     settle_s: float = 60,
     lamps: "dict[str, tuple[int, int, int]] | None" = None,
     progress=None,
+    base_k: "dict[str, float] | None" = None,
 ) -> CalibrationResult:
     """Never writes parameters; returns candidates. Always restores the lamps (also on cancel / error).
+
+    ``base_k`` maps lamp key -> the k to keep for a lamp that shows no growth (see the module docstring).
 
     ``lamps`` maps lamp key -> three test levels; default is the plan's five lamps. The set of keys is a
     parameter so the calibration does not depend on how lamps end up being configured.
@@ -131,7 +161,7 @@ async def run_calibration(
             raise CalibrationAborted("no illuminance reading with all lamps off")
         if bg0 > MAX_BG:
             warnings.append(f"background {bg0} lx with all lamps off is not darkness (expected up to {MAX_BG} lx): k may be inaccurate, "
-                            f"and calibrate_apply would write dark_lux_offset = {round(min(bg0, DARK_RANGE[1]), 2)}")
+                            f"and, if a lamp is measured, calibrate_apply would write dark_lux_offset = {round(min(bg0, DARK_RANGE[1]), 2)}")
         fits: dict[str, LampFit] = {}
         for key, levels in lamps.items():
             if progress:
@@ -151,7 +181,9 @@ async def run_calibration(
             after = await io.read_lux() or 0.0
             fit = fit_lamp(key, levels, tuple(readings), before, after)
             if fit.lux[2] - fit.base < MIN_GROWTH:
-                raise CalibrationAborted(f"{key}: the lamp does not change the illuminance (no growth)")
+                k0 = round(min(max((base_k or {}).get(key, DEFAULT_BASE_K), K_RANGE[0]), K_RANGE[1]), 3)
+                fit = LampFit(key, fit.base, fit.lux, k0, k0, k0, [f"no growth above {MIN_GROWTH:g} lx at {levels[2]} %: not measured, base k = {k0} kept"],
+                              SOURCE_BASE)
             if await io.presence_on():
                 _warn_once(warnings, f"presence detected during the measurement of {key}")
             fits[key] = fit
@@ -185,8 +217,8 @@ class CandidateError(ValueError):
 
 
 def validate_candidates(cand: dict[str, float], known_keys) -> dict[str, float]:
-    """Return clamped k per known lamp plus 'bg0'. Raises when nothing usable is there."""
-    if not cand or "bg0" not in cand:
+    """Return clamped k per known lamp, plus 'bg0' when the run measured something. Raises when nothing usable is there."""
+    if not cand:
         raise CandidateError("no calibration candidates; run the calibration first")
     out = {}
     for key in known_keys:
@@ -195,8 +227,44 @@ def validate_candidates(cand: dict[str, float], known_keys) -> dict[str, float]:
             out[key] = round(min(max(cand[key], lo), hi), 3)
     if not out:
         raise CandidateError("candidates contain none of the configured lamps")
-    out["bg0"] = round(min(max(cand["bg0"], DARK_RANGE[0]), DARK_RANGE[1]), 2)
+    if "bg0" in cand:
+        out["bg0"] = round(min(max(cand["bg0"], DARK_RANGE[0]), DARK_RANGE[1]), 2)
     return out
+
+
+def candidate_meta(cand: dict, known_keys) -> dict:
+    """{'source': measured|base|mixed, 'base_lamps': [...]} of a stored candidates record."""
+    keys = [k for k in known_keys if k in cand]
+    base = [k for k in keys if cand.get(BASE_PREFIX + k)]
+    source = SOURCE_BASE if keys and len(base) == len(keys) else SOURCE_MIXED if base else SOURCE_MEASURED
+    return {"source": source, "base_lamps": base}
+
+
+BASE_NOTE_EN = ("The base value of k was used for: {lamps}. Reason: with this lamp at up to its highest test level the illuminance sensor "
+                "of the zone rose by less than {growth:g} lx, so k cannot be measured: the lamp does not affect the sensor (the sensor is "
+                "too far or mounted too high, or the lamp is too weak). The base k is the current value of the lamp (the last applied or "
+                "hand-set one, 0.1 by default); it is NOT a measurement and no k = 0 is ever written. {zone_note}"
+                "To measure it, raise calib_levels of the lamp (for example 40,70,100) and/or settle_s, or move the sensor closer; "
+                "otherwise set k by hand.")
+BASE_NOTE_RU = ("Использовано базовое значение k для: {lamps}. Причина: при самом высоком тестовом уровне этой лампы освещённость на датчике "
+                "зоны выросла меньше чем на {growth:g} лк, поэтому k не измерить: лампа не влияет на датчик (датчик далеко или висит слишком "
+                "высоко, либо лампа слишком слабая). Базовое k это текущее значение лампы (последнее применённое или заданное вручную, по "
+                "умолчанию 0.1); это НЕ измерение, k = 0 не записывается никогда. {zone_note}"
+                "Чтобы измерить, увеличьте calib_levels лампы (например 40,70,100) и/или settle_s либо поднесите датчик ближе; "
+                "иначе задайте k вручную.")
+ZONE_BASE_EN = "No lamp of the zone showed growth, so the whole zone is calibrated 'by base' and dark_lux_offset is NOT proposed. "
+ZONE_BASE_RU = "Ни одна лампа зоны не показала прироста, поэтому вся зона откалибрована «по базе», dark_lux_offset НЕ предлагается. "
+
+
+def base_notice(result: "CalibrationResult") -> str:
+    """Bilingual explanation for the notification when any lamp ended up on its base k ('' when none)."""
+    lamps = ", ".join(f"{k} (k={result.fits[k].k_fit})" for k in result.base_lamps)
+    if not lamps:
+        return ""
+    whole = result.source == SOURCE_BASE
+    en = BASE_NOTE_EN.format(lamps=lamps, growth=MIN_GROWTH, zone_note=ZONE_BASE_EN if whole else "")
+    ru = BASE_NOTE_RU.format(lamps=lamps, growth=MIN_GROWTH, zone_note=ZONE_BASE_RU if whole else "")
+    return f"{en}\n\n{ru}"
 
 
 NO_SENSOR_REASON = "the zone has no illuminance sensor (calibration measures lux)"
@@ -219,9 +287,10 @@ def open_k_blockers(*, mode: str | None, daylight: float | None, any_lamp_on: bo
 
 
 def summary_message(result: CalibrationResult) -> str:
-    lines = [f"background {result.bg0} lx"]
+    lines = [f"background {result.bg0} lx", f"source: {result.source}"]
     lines += [f"WARNING: {w}" for w in result.warnings]
     for k, f in result.fits.items():
         w = f"  ({'; '.join(f.warnings)})" if f.warnings else ""
-        lines.append(f"{k}: k={f.k_fit} (lux {f.lux[0]}/{f.lux[1]}/{f.lux[2]}, base {round(f.base, 1)}){w}")
+        tag = "BASE k (not measured)" if f.source == SOURCE_BASE else "k"
+        lines.append(f"{k}: {tag}={f.k_fit} (lux {f.lux[0]}/{f.lux[1]}/{f.lux[2]}, base {round(f.base, 1)}){w}")
     return "\n".join(lines)
