@@ -1,0 +1,65 @@
+name: Release draft
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-draft
+  cancel-in-progress: true
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from manifest
+        id: ver
+        run: |
+          v=$(python3 -c "import json;print(json.load(open('custom_components/adaptive_light/manifest.json'))['version'])")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          v = os.environ["VERSION"]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## \[{re.escape(v)}\][^\n]*\n(.*?)(?=^## \[|^\[[^\]]+\]:|\Z)", text, re.S | re.M)
+          body = m.group(1).strip() if m else ""
+          if not body:
+              m = re.search(r"^## \[Unreleased\][^\n]*\n(.*?)(?=^## \[|^\[[^\]]+\]:|\Z)", text, re.S | re.M)
+              body = m.group(1).strip() if m else ""
+          tags = subprocess.run(["git", "tag", "--list", "v*", "--sort=-v:refname"], capture_output=True, text=True).stdout.split()
+          rng = f"{tags[0]}..HEAD" if tags else "HEAD"
+          log = subprocess.run(["git", "log", rng, "--no-merges", "--pretty=format:- %s (%h)"], capture_output=True, text=True).stdout.strip()
+          out = f"## Версия {v}\n\n"
+          out += (body + "\n\n") if body else "_Раздел для этой версии в CHANGELOG.md пока пуст._\n\n"
+          out += "### Коммиты с прошлого релиза\n\n" + (log or "_нет новых коммитов_") + "\n"
+          open("notes.md", "w", encoding="utf-8").write(out)
+          PY
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "$tag" --json isDraft -q .isDraft 2>/dev/null | grep -q true; then
+            gh release edit "$tag" --title "$tag" --notes-file notes.md
+          elif gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag is already published; bump the version in manifest.json for a new draft."
+          else
+            gh release create "$tag" --draft --target "${GITHUB_SHA}" --title "$tag" --notes-file notes.md
+          fi
