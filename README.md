@@ -1,13 +1,16 @@
 # Adaptive Light (HACS)
 
+[![Открыть в Home Assistant и добавить репозиторий в HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=menikoDev&repository=adaptive-light-hacs&category=integration)
+
 Интеграция Home Assistant, которая сама ведёт яркость ламп по освещённости в комнате и свету с улицы. Это перенос YAML-плана «adaptive light» (датчик lux, радиация, доверие к жалюзи, контроллер с шагом 10 %, калибровка, per-lamp `_auto`) в одну интеграцию с мастером настройки, несколькими комнатами и группами ламп.
 
 Статус: проверено на тестовом HA Core 2026.11.1 с фейковыми лампами. Реальное железо (Zigbee2MQTT, Aqara) не проверялось, подробности в `results.md`, раздел «Что не проверено».
 
 ## Установка через HACS
 
-1. Положите содержимое этой папки в отдельный GitHub-репозиторий (в корне: `custom_components/`, `hacs.json`, `README.md`). В `manifest.json` замените `OWNER` в ссылках `documentation` и `issue_tracker`.
-2. HACS, Integrations, меню «Custom repositories», добавьте URL репозитория, категория Integration, затем Download.
+1. Нажмите кнопку выше: откроется ваш Home Assistant (my.home-assistant.io запросит адрес вашего HA один раз) и страница репозитория в HACS. Если HACS ещё не установлен, сначала поставьте его.
+   Вручную: HACS, меню «Custom repositories», URL `https://github.com/menikoDev/adaptive-light-hacs`, категория Integration.
+2. На странице репозитория в HACS нажмите Download и выберите версию.
 3. Перезапустите Home Assistant.
 4. Настройки, Устройства и службы, Добавить интеграцию, «Adaptive Light».
 
