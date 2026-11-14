@@ -51,7 +51,7 @@
 [PASS] C9 controller tick mode=Movie A={'top_left': 80, 'top_right': 80, 'bottom': 5, 'desk': 70, 'stick': 45} B={'top_left': 80, 'top_right': 80, 'bottom': 5, 'desk': 70, 'stick': 45} before={'top_left': 80, 'top_right': 80, 'bottom': 5, 'desk': 80, 'stick': 55}
 [PASS] C* controller parity (10 ticks, apply on) mismatch=0, lamps moved on A=41
 waiting 62 s so the controller's own-change window (60 s) has passed
-[PASS] O1 manual change pauses lamp (B) 2026-11-14T10:01:26+00:00
+[PASS] O1 manual change pauses lamp (B) 2026-11-14T14:56:09+00:00
 [PASS] O2 controller's own changes do not start a pause (B) {'top_left': 'unknown', 'top_right': 'unknown', 'bottom': 'unknown', 'desk': 'unknown', 'stick': 'unknown'}
 
 54/54 PASS

@@ -69,26 +69,28 @@ ERR = {
     "lamp_zone_mismatch": ("A group mixes lamps of different zones", "В группе лампы из разных зон"),
     "bad_role": ("Unknown sensor role", "Неизвестная роль датчика"), "role_zone_mismatch": ("Sensor role does not fit its zone", "Роль датчика не подходит зоне"),
     "bad_sensor_domain": ("The entity type does not fit the role", "Тип сущности не подходит роли"),
-    "zone_needs_illuminance": ("Every zone needs an illuminance sensor", "Нужен датчик освещённости"),
+    "zone_needs_name": ("Enter a zone name", "Введите название зоны"),
     "bad_binding": ("Invalid behaviour binding", "Некорректная привязка поведения"), "no_zones": ("Add at least one zone", "Добавьте хотя бы одну зону"),
     "group_needs_lamps": ("Pick at least one lamp", "Выберите хотя бы одну лампу"),
 }
 UI = {  # key: (en, ru)
     "title": ("Adaptive Light", "Адаптивный свет"),
-    "user": ("Set up", "Настройка", "Build the configuration step by step or start from the preset of the YAML plan (living room).",
-             "Соберите конфигурацию по шагам или начните с пресета YAML-плана (гостиная)."),
+    "user": ("Set up", "Настройка", "Build the configuration step by step or start from the preset of the YAML plan (living room). Progress is saved after every step, so closing this window by accident does not lose it.\n\n{draft}",
+             "Соберите конфигурацию по шагам или начните с пресета YAML-плана (гостиная). Прогресс сохраняется после каждого шага: случайно закрытое окно его не теряет.\n\n{draft}"),
     "global_sensors": ("Outdoor light", "Уличный свет", "Optional sensors that tell how bright it is outside. Without them the integration cannot compute the daylight factor.",
                        "Необязательные датчики уличного света. Без них дневной свет не посчитать."),
-    "zone": ("New zone", "Новая зона", "A zone is one room: its lamps plus its illuminance and presence sensors.",
-             "Зона — это комната: её лампы, датчик освещённости и датчик присутствия."),
-    "new_zone": ("New zone", "Новая зона", "A zone is one room: its lamps plus its illuminance and presence sensors.",
-                 "Зона — это комната: её лампы, датчик освещённости и датчик присутствия."),
-    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "Illuminance is required. Presence and media sensors are used by calibration and executors.",
-                     "Освещённость обязательна. Присутствие и ТВ/мониторы нужны калибровке и сценариям."),
+    "zone": ("New zone", "Новая зона", "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
+             "Зона — это комната. Выберите одну из областей (Areas) Home Assistant: название, ключ, лампы и датчики подставятся сами. Или оставьте поле пустым для своей зоны."),
+    "new_zone": ("New zone", "Новая зона", "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
+                 "Зона — это комната. Выберите одну из областей (Areas) Home Assistant: название, ключ, лампы и датчики подставятся сами. Или оставьте поле пустым для своей зоны."),
+    "zone_name": ("Name of the zone", "Название зоны", "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
+                  "Область: {area}. Название видно в Home Assistant, его можно изменить. Ключ — короткий латинский id для сущностей и настроек; пустой = получить из названия."),
+    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled.",
+                     "Все необязательные. Без датчика освещённости зона считает свет по дневному свету и не калибруется. Датчики из области подставлены."),
     "zone_extra_sensors": ("Extra sensors of {zone}", "Дополнительные датчики {zone}", "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
                            "Только для сценариев поведения (холодильник, диван, окна ...). Оставьте пустым, если не нужно."),
-    "zone_lamps": ("Lamps of {zone}", "Лампы зоны {zone}", "Pick the light entities of this zone. Each becomes a lamp with its own auto switch.",
-                   "Выберите лампы этой зоны. У каждой будет свой переключатель авто."),
+    "zone_lamps": ("Lamps of {zone}", "Лампы зоны {zone}", "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
+                   "Выберите лампы этой зоны (лампы области подставлены). У каждой будет свой переключатель авто."),
     "group_add": ("New lamp group in {zone}", "Новая группа ламп в {zone}", "A group shares settings and can be used by scenarios. A lamp may be in several groups.",
                   "Группа задаёт общие настройки и используется сценариями. Лампа может входить в несколько групп."),
     "group_edit": ("Group {group}", "Группа {group}", "", ""),
@@ -101,7 +103,9 @@ UI = {  # key: (en, ru)
     "save": ("Review", "Проверка", "{summary}\n\n{detail}", "{summary}\n\n{detail}"),
 }
 MENU = {  # step: {option: (en, ru)}
-    "user": {"global_sensors": ("Step-by-step wizard", "Пошаговый мастер"), "preset_plan": ("Preset: living room of the YAML plan", "Пресет: гостиная из YAML-плана")},
+    "user": {"global_sensors": ("Step-by-step wizard", "Пошаговый мастер"), "preset_plan": ("Preset: living room of the YAML plan", "Пресет: гостиная из YAML-плана"),
+             "resume_draft": ("Continue the unfinished setup", "Продолжить незавершённую настройку"),
+             "discard_draft": ("Discard the unfinished setup", "Удалить незавершённую настройку")},
     "groups_menu": {"group_add": ("Add a lamp group", "Добавить группу ламп"), "more_zones": ("Continue", "Дальше")},
     "more_zones": {"zone": ("Add another zone", "Добавить ещё зону"), "save": ("Finish", "Готово")},
     "init": {"global_sensors": ("Outdoor sensors", "Уличные датчики"), "global_params": ("Global parameters", "Глобальные параметры"),
@@ -114,7 +118,7 @@ MENU = {  # step: {option: (en, ru)}
     "group_menu": {"group_edit": ("Name and lamps", "Название и лампы"), "group_params": ("Group parameters", "Параметры группы"),
                    "group_remove": ("Remove group", "Удалить группу"), "init": ("Back", "Назад")},
 }
-FIELD = {"name": ("Name", "Название"), "lamps": ("Lamps", "Лампы"), "share_pause": ("Manual change pauses the whole group", "Ручное изменение ставит на паузу всю группу"),
+FIELD = {"name": ("Name", "Название"), "area": ("Area (optional)", "Область (необязательно)"), "key": ("Zone key (optional)", "Ключ зоны (необязательно)"), "lamps": ("Lamps", "Лампы"), "share_pause": ("Manual change pauses the whole group", "Ручное изменение ставит на паузу всю группу"),
          "zone": ("Zone", "Зона"), "lamp": ("Lamp", "Лампа"), "group": ("Group", "Группа")}
 SERV = {
     "controller_tick": ("Run controller tick", "Один такт контроллера"), "clear_pauses": ("Clear manual pauses", "Сбросить паузы"),
@@ -141,7 +145,8 @@ def build(i: int) -> dict:
     for sid in ("group_add", "group_edit"):
         for f in ("name", "lamps", "share_pause"):
             data[sid][f] = FIELD[f][i]
-    data["zone"]["name"] = data["new_zone"]["name"] = FIELD["name"][i]
+    data["zone"]["area"] = data["new_zone"]["area"] = FIELD["area"][i]
+    data["zone_name"]["name"], data["zone_name"]["key"] = FIELD["name"][i], FIELD["key"][i]
     data["zone_lamps"]["lamps"] = FIELD["lamps"][i]
     for sid, f in (("pick_zone", "zone"), ("pick_lamp", "lamp"), ("pick_group", "group")):
         data[sid][f] = FIELD[f][i]

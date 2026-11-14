@@ -71,6 +71,16 @@ class HA:
     def options_step(self, fid, data):
         return self.req("POST", f"/api/config/config_entries/options/flow/{fid}", data)
 
+    def ws(self, msg):
+        """One websocket command (area/entity registry) through the harness venv, which has aiohttp."""
+        import subprocess, os
+        out = subprocess.run(["/tmp/hatest/venv/bin/python", os.path.join(os.path.dirname(os.path.abspath(__file__)), "ws_b.py"), json.dumps(msg)],
+                             capture_output=True, text=True, check=True).stdout
+        r = json.loads(out)
+        if not r.get("success"):
+            raise RuntimeError(f"ws {msg['type']}: {r}")
+        return r["result"]
+
     def wait(self, fn, timeout=60, step=0.5):
         t = time.time()
         while time.time() - t < timeout:

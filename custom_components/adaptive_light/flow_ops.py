@@ -13,6 +13,9 @@ def _unique(base: str, taken) -> str:
     return key
 
 
+unique_key = _unique
+
+
 def find(cfg: dict, coll: str, key: str) -> dict:
     for x in cfg[coll]:
         if x["key"] == key:
@@ -20,9 +23,14 @@ def find(cfg: dict, coll: str, key: str) -> dict:
     raise ConfigError("unknown_" + coll.rstrip("s"), key)
 
 
-def add_zone(cfg: dict, name: str) -> str:
-    key = _unique(name, {z["key"] for z in cfg["zones"]})
-    cfg["zones"].append({"key": key, "name": name.strip() or key, "params": {}, "bindings": {}})
+def add_zone(cfg: dict, name: str, key: str | None = None, area_id: str | None = None) -> str:
+    """Add a zone. ``key`` (a prefilled or typed zone key) defaults to the slug of the name; it is made unique.
+    ``area_id`` remembers the Home Assistant Area the zone was created from."""
+    key = _unique(key or name, {z["key"] for z in cfg["zones"]})
+    zone = {"key": key, "name": name.strip() or key, "params": {}, "bindings": {}}
+    if area_id:
+        zone["area_id"] = area_id
+    cfg["zones"].append(zone)
     return key
 
 

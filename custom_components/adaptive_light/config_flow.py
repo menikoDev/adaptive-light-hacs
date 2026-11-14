@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import logging
+import time
 from typing import Any
 
 import voluptuous as vol
@@ -9,11 +11,13 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector as sel
+from homeassistant.util import slugify
 
-from . import flow_ops as ops, params as P
+from . import areas, draft as drafts, flow_ops as ops, params as P
 from .const import CONF_CONFIG, DOMAIN
-from .model import BINDING_SLOTS, GLOBAL_ROLES, ROLE_DOMAINS, empty_config, normalise, plan_living_room, validate
+from .model import BINDING_SLOTS, GLOBAL_ROLES, KEY_RE, ROLE_DOMAINS, empty_config, normalise, plan_living_room, validate
 
+_LOGGER = logging.getLogger(__name__)
 EXTRA_ROLES = ("sofa", "table", "fridge", "entrance", "carpet", "window_advice", "window_left", "window_right",
                "vent_mode", "color_store")
 BOOL_OPTS = ["yes", "no"]
@@ -78,7 +82,22 @@ class EditorMixin:
         return self._zone or (self.cfg["zones"][0]["key"] if self.cfg["zones"] else "")
 
     async def _go(self, step: str):
+        await self._checkpoint(step)
         return await getattr(self, f"async_step_{step}")()
+
+    async def _checkpoint(self, next_step: str) -> None:
+        """Called whenever the editor moves on; the wizard saves its draft here."""
+
+    # ---- Home Assistant Areas (overridable in tests)
+    def _list_areas(self) -> list[tuple[str, str]]:
+        return areas.async_list_areas(self.hass)
+
+    def _area_defaults(self, area_id: str) -> dict[str, list[str]]:
+        return areas.async_area_defaults(self.hass, area_id)
+
+    def _zone_area_defaults(self) -> dict[str, list[str]]:
+        aid = ops.find(self.cfg, "zones", self._zone).get("area_id") if self._zone else None
+        return self._area_defaults(aid) if aid else {}
 
     # ---- sensors
     async def async_step_global_sensors(self, user_input=None):
@@ -92,22 +111,21 @@ class EditorMixin:
 
     async def async_step_zone_sensors(self, user_input=None):
         z = self._zone
-        errors = {}
         if user_input is not None:
-            if not user_input.get("illuminance"):
-                errors["base"] = "zone_needs_illuminance"
-            else:
-                ops.set_sensor(self.cfg, "illuminance", user_input["illuminance"], z)
-                ops.set_sensor(self.cfg, "presence", user_input.get("presence"), z)
-                ops.set_media(self.cfg, z, user_input.get("media", []))
-                return await self._go(self._after_zone_sensors)
+            ops.set_sensor(self.cfg, "illuminance", user_input.get("illuminance"), z)
+            ops.set_sensor(self.cfg, "presence", user_input.get("presence"), z)
+            ops.set_media(self.cfg, z, user_input.get("media", []))
+            return await self._go(self._after_zone_sensors)
         by = lambda r: [s["entity"] for s in self.cfg["sensors"] if s["zone"] == z and s["role"] == r]
-        ill, pres = (by("illuminance") or [None])[0], (by("presence") or [None])[0]
+        untouched = not any(s["zone"] == z for s in self.cfg["sensors"])
+        d = self._zone_area_defaults() if untouched else {}
+        ill = (by("illuminance") or d.get("illuminance", [])[:1] or [None])[0]
+        pres = (by("presence") or d.get("presence", [])[:1] or [None])[0]
         schema = vol.Schema({
-            (vol.Required("illuminance", description={"suggested_value": ill}) if ill else vol.Required("illuminance")): _ent(["sensor"]),
+            _opt("illuminance", ill): _ent(["sensor"]),
             _opt("presence", pres): _ent(["binary_sensor"]),
-            _opt("media", by("media")): _ent(ROLE_DOMAINS["media"], multiple=True)})
-        return self.async_show_form(step_id="zone_sensors", data_schema=schema, errors=errors,
+            _opt("media", by("media") or d.get("media", [])): _ent(ROLE_DOMAINS["media"], multiple=True)})
+        return self.async_show_form(step_id="zone_sensors", data_schema=schema,
                                     description_placeholders={"zone": self._zone_name()})
 
     async def async_step_zone_extra_sensors(self, user_input=None):
@@ -128,8 +146,49 @@ class EditorMixin:
         if user_input is not None:
             ops.add_lamps(self.cfg, self._zone, user_input.get("lamps", []))
             return await self._go(self._after_zone_lamps)
-        return self.async_show_form(step_id="zone_lamps", data_schema=vol.Schema({vol.Optional("lamps"): _ent(["light"], True)}),
+        have = {x["entity"] for x in self.cfg["lamps"]}
+        suggest = [e for e in self._zone_area_defaults().get("lights", []) if e not in have]
+        return self.async_show_form(step_id="zone_lamps", data_schema=vol.Schema({_opt("lamps", suggest): _ent(["light"], True)}),
                                     description_placeholders={"zone": self._zone_name()})
+
+    # ---- new zone: pick an Area (optional), then confirm the name and key
+    _pending_area: str | None = None
+
+    async def _zone_area_step(self, step_id: str, user_input):
+        used = {z.get("area_id") for z in self.cfg["zones"]}
+        free = [(i, n) for i, n in self._list_areas() if i not in used]
+        if user_input is not None or not free:
+            self._pending_area = (user_input or {}).get("area") or None
+            return await self.async_step_zone_name()
+        options = [{"value": i, "label": n} for i, n in free]
+        return self.async_show_form(step_id=step_id, data_schema=vol.Schema({
+            vol.Optional("area"): sel.SelectSelector(sel.SelectSelectorConfig(options=options, mode=sel.SelectSelectorMode.DROPDOWN))}))
+
+    def _default_zone_key(self, name: str, area_id: str | None) -> str:
+        return ops.unique_key(area_id or slugify(name) or "zone", {z["key"] for z in self.cfg["zones"]})
+
+    async def async_step_zone_name(self, user_input=None):
+        area = self._pending_area
+        area_name = dict(self._list_areas()).get(area or "", "")
+        errors = {}
+        cur = user_input or {}
+        if user_input is not None:
+            name, key = (cur.get("name") or "").strip(), (cur.get("key") or "").strip()
+            if not name:
+                errors["base"] = "zone_needs_name"
+            elif key and not KEY_RE.match(key):
+                errors["base"] = "bad_key"
+            elif key and key in {z["key"] for z in self.cfg["zones"]}:
+                errors["base"] = "duplicate_key"
+            else:
+                self._zone = ops.add_zone(self.cfg, name, key or self._default_zone_key(name, area), area)
+                self._pending_area = None
+                return await self._go("zone_sensors")
+        name_s = cur.get("name") or area_name
+        key_s = cur.get("key") or (self._default_zone_key(name_s, area) if area else "")
+        return self.async_show_form(step_id="zone_name", errors=errors, data_schema=vol.Schema({
+            _opt("name", name_s): sel.TextSelector(), _opt("key", key_s): sel.TextSelector()}),
+            description_placeholders={"area": area_name or "-"})
 
     def _zone_lamp_options(self):
         return [x["key"] for x in self.cfg["lamps"] if x["zone"] == self._zone]
@@ -198,7 +257,7 @@ class EditorMixin:
     async def async_step_save(self, user_input=None):
         errors = self._errors()
         if user_input is not None and not errors:
-            return self._finish(normalise(self.cfg))
+            return await self._finish(normalise(self.cfg))
         return self.async_show_form(step_id="save", data_schema=vol.Schema({}), errors=errors,
                                     description_placeholders={"summary": summary(self.cfg), "detail": self._detail()})
 
@@ -217,21 +276,54 @@ class AdaptiveLightConfigFlow(EditorMixin, config_entries.ConfigFlow, domain=DOM
 
     def __init__(self) -> None:
         self.cfg = empty_config()
+        self._draft: dict | None = None
+
+    # ---- draft: progress survives an accidentally closed dialog (see draft.py)
+    def _drafts(self) -> drafts.DraftStore:
+        return drafts.HassDraftStore(self.hass)
+
+    def _now_ts(self) -> float:
+        return time.time()
+
+    async def _checkpoint(self, next_step: str) -> None:
+        if not drafts.is_meaningful(self.cfg):
+            return
+        try:
+            await self._drafts().async_save(drafts.pack(self.cfg, next_step, self._zone, self._now_ts()))
+        except Exception:  # a failing draft must never break the wizard itself
+            _LOGGER.warning("could not save the wizard draft", exc_info=True)
 
     async def async_step_user(self, user_input=None):
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
-        return self.async_show_menu(step_id="user", menu_options=["global_sensors", "preset_plan"])
+        self._draft = drafts.unpack(await self._drafts().async_load(), self._now_ts())
+        options = ["global_sensors", "preset_plan"]
+        note = ""
+        if self._draft:
+            c = self._draft["config"] = normalise(self._draft["config"])
+            options = ["resume_draft", *options, "discard_draft"]
+            head = ("Найдена незавершённая настройка: зон %d, ламп %d." if self.hass.config.language.startswith("ru")
+                    else "Unfinished setup found: %d zone(s), %d lamp(s).") % (len(c["zones"]), len(c["lamps"]))
+            note = f"{head}\n{summary(c)}"
+        return self.async_show_menu(step_id="user", menu_options=options, description_placeholders={"draft": note})
+
+    async def async_step_resume_draft(self, user_input=None):
+        if not self._draft:
+            return await self.async_step_user()
+        self.cfg, self._zone = copy.deepcopy(self._draft["config"]), self._draft["zone"]
+        return await self._go(self._draft["step"])
+
+    async def async_step_discard_draft(self, user_input=None):
+        await self._drafts().async_remove()
+        self._draft = None
+        return await self.async_step_user()
 
     async def async_step_preset_plan(self, user_input=None):
         self.cfg = plan_living_room()
-        return await self.async_step_save()
+        return await self._go("save")
 
     async def async_step_zone(self, user_input=None):
-        if user_input is not None:
-            self._zone = ops.add_zone(self.cfg, user_input["name"])
-            return await self.async_step_zone_sensors()
-        return self.async_show_form(step_id="zone", data_schema=vol.Schema({vol.Required("name"): sel.TextSelector()}))
+        return await self._zone_area_step("zone", user_input)
 
     async def async_step_groups_menu(self, user_input=None):
         return self.async_show_menu(step_id="groups_menu", menu_options=["group_add", "more_zones"])
@@ -239,7 +331,8 @@ class AdaptiveLightConfigFlow(EditorMixin, config_entries.ConfigFlow, domain=DOM
     async def async_step_more_zones(self, user_input=None):
         return self.async_show_menu(step_id="more_zones", menu_options=["zone", "save"])
 
-    def _finish(self, cfg: dict):
+    async def _finish(self, cfg: dict):
+        await self._drafts().async_remove()
         return self.async_create_entry(title="Adaptive Light", data={CONF_CONFIG: cfg})
 
     @staticmethod
@@ -263,7 +356,7 @@ class AdaptiveLightOptionsFlow(EditorMixin, config_entries.OptionsFlow):
             self.cfg = copy.deepcopy(self.config_entry.options.get(CONF_CONFIG) or self.config_entry.data[CONF_CONFIG])
             self._loaded = True
 
-    def _finish(self, cfg: dict):
+    async def _finish(self, cfg: dict):
         return self.async_create_entry(title="", data={CONF_CONFIG: cfg})
 
     async def async_step_init(self, user_input=None):
@@ -295,10 +388,7 @@ class AdaptiveLightOptionsFlow(EditorMixin, config_entries.OptionsFlow):
         return await self._pick("pick_group", "group", [g["key"] for g in self.cfg["groups"]], "_group", "group_menu", user_input)
 
     async def async_step_new_zone(self, user_input=None):
-        if user_input is not None:
-            self._zone = ops.add_zone(self.cfg, user_input["name"])
-            return await self.async_step_zone_sensors()
-        return self.async_show_form(step_id="new_zone", data_schema=vol.Schema({vol.Required("name"): sel.TextSelector()}))
+        return await self._zone_area_step("new_zone", user_input)
 
     async def async_step_zone_menu(self, user_input=None):
         return self.async_show_menu(step_id="zone_menu", menu_options=[

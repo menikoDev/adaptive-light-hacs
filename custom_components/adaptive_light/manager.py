@@ -184,6 +184,16 @@ class AdaptiveLightManager:
     def zone_lux(self, zone: str) -> float | None:
         return _num(self._st(self.cfg.sensor("illuminance", zone)))
 
+    def has_lux_sensor(self, zone: str) -> bool:
+        return bool(self.cfg.sensor("illuminance", zone))
+
+    def effective_lux(self, zone: str) -> float | None:
+        """What the formulas see as the zone's illuminance: the sensor reading, or for a zone configured without
+        an illuminance sensor the daylight-only estimate (see core.estimate_lux)."""
+        if self.has_lux_sensor(zone):
+            return self.zone_lux(zone)
+        return core.estimate_lux(self.daylight(), self.zone_lamps(zone), self._flat_zone[zone])
+
     def inputs_for(self, zone: str, lamp: str | None = None) -> core.Inputs:
         if lamp is None:
             p, mode, scene_ent, evening_h = self._flat_zone[zone], self.zone_mode(zone), self._zone_p[zone]["scene_entity"], self._zone_p[zone]["evening_start_hour"]
@@ -191,7 +201,8 @@ class AdaptiveLightManager:
             p, mode, scene_ent, evening_h = self._flat_lamp[lamp], self.lamp_mode(lamp), self._lamp_p[lamp]["scene_entity"], self._lamp_p[lamp]["evening_start_hour"]
         scene = self._entity_state(scene_ent, "") if scene_ent else None
         return core.Inputs(
-            lux=self.zone_lux(zone), daylight=self.daylight(), openness=self.openness[zone].value, mode=mode,
+            lux=self.effective_lux(zone), daylight=self.daylight(),
+            openness=self.openness[zone].value if self.has_lux_sensor(zone) else 100.0, mode=mode,
             scene=scene, evening_quiet=self._now().hour >= int(evening_h), lamps=self.zone_lamps(zone), params=p)
 
     def set_calibration_status(self, zone: str, status: str) -> None:
@@ -204,14 +215,17 @@ class AdaptiveLightManager:
         for z in self.cfg.zone_order:
             i = self.inputs_for(z)
             ready = i.lux is not None and i.daylight is not None
+            measured = self.has_lux_sensor(z)
             v["zones"][z] = {
                 "ambient": core.ambient(i.lux, i.lamps, i.params) if i.lux is not None else None,
                 "ambient_lamps_lx": round(core.lamps_lx(i.lamps, i.params), 1),
+                "lux_source": "sensor" if measured else "daylight_estimate",
                 "need": round(core.need("", i)) if ready else None,
-                "trust": core.trust(i.daylight, i.openness, i.lux, i.lamps, i.params) if ready else None,
-                "openness": self.openness[z].value,
+                # without a sensor there is nothing to judge openness or trust from: both are not applicable
+                "trust": core.trust(i.daylight, i.openness, i.lux, i.lamps, i.params) if ready and measured else None,
+                "openness": self.openness[z].value if measured else None,
                 "low_count": self.openness[z].low_count,
-                "openness_raw": core.openness_raw(i.lux, i.daylight, i.mode, i.lamps, i.params),
+                "openness_raw": core.openness_raw(i.lux, i.daylight, i.mode, i.lamps, i.params) if measured else None,
                 "evening_quiet": i.evening_quiet,
                 "mode": i.mode,
             }
@@ -349,7 +363,7 @@ class AdaptiveLightManager:
             auto=dict(self.state.auto), bind=b,
             lamp_params={k: {"work_hours_only": self._lamp_p[k]["work_hours_only"], "legacy_ratio": self._lamp_p[k]["legacy_ratio"]}
                          for k in keys},
-            mode=self.zone_mode(zone), lux=self.zone_lux(zone), hour=self._now().hour, now_ts=self._now().timestamp(),
+            mode=self.zone_mode(zone), lux=self.effective_lux(zone), hour=self._now().hour, now_ts=self._now().timestamp(),
             last_set_ts=self.state.last_set_ts, enabled=self.state.enabled, apply=self.state.apply,
             lamps={k: self.lamp_full(k) for k in keys}, targets={k: self.target(k) for k in keys},
             scene=self._entity_state(scene_ent, "") if scene_ent else None,

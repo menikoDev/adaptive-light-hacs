@@ -28,7 +28,18 @@ def restart():
     time.sleep(3)
 
 
+def reset_world():
+    """No entries, no wizard draft, no areas: the same starting point for every test."""
+    for e in B.entries():
+        B.req("DELETE", "/api/config/config_entries/entry/" + e["entry_id"])
+    subprocess.run(["rm", "-f", "/tmp/hatest_int/config/.storage/adaptive_light_wizard_draft"])
+    for a in B.ws({"type": "config/area_registry/list"}):
+        B.ws({"type": "config/area_registry/delete", "area_id": a["area_id"]})
+    time.sleep(1)
+
+
 def fresh_entry(preset=True):
+    reset_world()
     for e in B.entries():
         B.req("DELETE", "/api/config/config_entries/entry/" + e["entry_id"])
     time.sleep(2)
@@ -61,18 +72,42 @@ def t_wizard():
             "switch.light_living_room_top_lamp_bottom_auto", "number.light_k_work_station_lamp", "sensor.light_target_work_station_lamp",
             "sensor.bedroom_light_calibration"}
     check("W2", "entities of both zones and every lamp exist", need <= ents, str(sorted(need - ents)))
-    # validation messages reach the user: a zone without illuminance sensor
-    f = B.flow_start() if not B.entries() else None
+    # a zone WITHOUT illuminance sensor is accepted (0.3.0) and runs on the daylight-only estimate
     for e in B.entries():
         B.req("DELETE", "/api/config/config_entries/entry/" + e["entry_id"])
-    time.sleep(1)
+    time.sleep(1); B.seed()
     f = B.flow_start(); fid = f["flow_id"]
-    B.flow_step(fid, {"next_step_id": "global_sensors"}); B.flow_step(fid, {}); r = B.flow_step(fid, {"name": "Hall"})
+    B.flow_step(fid, {"next_step_id": "global_sensors"})
+    B.flow_step(fid, {"radiation": "sensor.general_graz_meteo_station_global_radiation", "elevation": "sensor.general_sun_solar_elevation"})
+    r = B.flow_step(fid, {"name": "Hall"})
+    check("W3", "zone sensors step has no required field", r["step_id"] == "zone_sensors" and not any(x.get("required") for x in r["data_schema"]), str(r["data_schema"]))
+    r = B.flow_step(fid, {"presence": "binary_sensor.bedroom_presence"})
+    check("W3b", "zone without illuminance sensor is accepted", r["step_id"] == "zone_lamps" and not r.get("errors"), str(r.get("errors")))
+    B.flow_step(fid, {"lamps": ["light.work_station_lamp", "light.work_station_light_stick"]})
+    B.flow_step(fid, {"next_step_id": "more_zones"}); r = B.flow_step(fid, {"next_step_id": "save"})
+    r = B.flow_step(fid, {})
+    check("W3c", "entry without any illuminance sensor is created", r["type"] == "create_entry", str(r.get("type")))
+    B.wait(lambda: B.state("sensor.hall_ambient_lux") not in ("MISSING", "unavailable"), 30)
+    B.put("sensor.general_graz_meteo_station_global_radiation", 75); time.sleep(2)
+    a = B.get("sensor.hall_ambient_lux")
+    check("W3d", "ambient = daylight-only estimate (open_k 1.0 x daylight 50)", a["state"] == "50.0" and a["attributes"].get("source") == "daylight_estimate", str((a["state"], a["attributes"].get("source"))))
+    check("W3e", "light need and lamp targets are computed", B.state("sensor.light_need") not in ("MISSING", "unavailable", "unknown")
+          and B.state("sensor.light_target_work_station_lamp") not in ("MISSING", "unavailable", "unknown"),
+          f"need={B.state('sensor.light_need')} target={B.state('sensor.light_target_work_station_lamp')}")
+    check("W3f", "trust and openness are unavailable (nothing to judge them by)", B.state("sensor.light_ambient_trust") == "unavailable" and B.state("sensor.light_openness") == "unavailable",
+          f"{B.state('sensor.light_ambient_trust')} {B.state('sensor.light_openness')}")
+    B.put("sensor.general_sun_solar_elevation", -20); B.call("input_select.select_option", {"entity_id": MODE, "option": "Night"})
     try:
-        B.flow_step(fid, {"presence": "binary_sensor.bedroom_presence"}); refused = False
+        B.call("adaptive_light.calibrate", {"zone": "hall", "settle_s": 1}); msg = ""
     except RuntimeError as e:
-        refused = "illuminance" in str(e)
-    check("W3", "zone step refuses a missing illuminance sensor", refused)
+        msg = str(e)
+    notes = B.ws({"type": "persistent_notification/get"})
+    check("W3g", "calibration of a zone without sensor refuses with a reason", "no illuminance sensor" in msg, msg[:200])
+    check("W3h", "and leaves a notification", any("no illuminance sensor" in str(n.get("message", "")) for n in notes), str([n.get("message") for n in notes])[:200])
+    B.put("sensor.general_sun_solar_elevation", 30); B.call("input_select.select_option", {"entity_id": MODE, "option": "Day"})
+    for e in B.entries():
+        B.req("DELETE", "/api/config/config_entries/entry/" + e["entry_id"])
+    time.sleep(1); B.seed()
     f = B.flow_start(); fid = f["flow_id"]
     B.flow_step(fid, {"next_step_id": "global_sensors"}); B.flow_step(fid, {}); B.flow_step(fid, {"name": "Hall"})
     B.flow_step(fid, {"illuminance": "sensor.bedroom_lux"}); B.flow_step(fid, {"lamps": ["light.work_station_lamp"]})
@@ -273,8 +308,105 @@ def t_scenarios():
     check("S8", "no adaptive_light errors in the HA log", errs.strip() == "", errs[:300])
 
 
+def schema(r):
+    return {x["name"]: x for x in r["data_schema"]}
+
+
+def t_areas():
+    """New-zone step with real Home Assistant Areas: list, prefilled name/key, lamps and sensors of the area, custom name."""
+    reset_world(); B.seed()
+    f = B.flow_start(); fid = f["flow_id"]
+    B.flow_step(fid, {"next_step_id": "global_sensors"})
+    r = B.flow_step(fid, {})
+    check("A1", "no areas registered: the zone step goes straight to the name form", r["step_id"] == "zone_name", r["step_id"])
+    B.req("DELETE", "/api/config/config_entries/flow/" + fid)
+    ids = {}
+    for name in ("Гостиная", "Рабочий кабинет"):
+        ids[name] = B.ws({"type": "config/area_registry/create", "name": name})["area_id"]
+    study = ids["Рабочий кабинет"]
+    for ent in ("light.work_station_lamp", "light.work_station_light_stick"):
+        B.ws({"type": "config/entity_registry/update", "entity_id": ent, "area_id": study})
+    f = B.flow_start(); fid = f["flow_id"]
+    B.flow_step(fid, {"next_step_id": "global_sensors"})
+    r = B.flow_step(fid, {})
+    opts = schema(r)["area"]["selector"]["select"]["options"] if r["step_id"] == "zone" else []
+    labels = sorted(o["label"] if isinstance(o, dict) else o[1] for o in opts)
+    check("A2", "zone step offers the registered areas (not required)", r["step_id"] == "zone" and labels == sorted(ids) and not schema(r)["area"].get("required"), f"{r['step_id']} {opts}")
+    r = B.flow_step(fid, {"area": study})
+    sug = {k: v.get("description", {}).get("suggested_value") for k, v in schema(r).items()}
+    check("A3", "name and zone key are prefilled from the area", r["step_id"] == "zone_name" and sug.get("name") == "Рабочий кабинет" and sug.get("key") == study, str(sug))
+    r = B.flow_step(fid, {"name": "Кабинет", "key": ""})
+    check("A4", "custom name accepted, zone sensors step follows", r["step_id"] == "zone_sensors", r["step_id"])
+    r = B.flow_step(fid, {})
+    sug = {k: v.get("description", {}).get("suggested_value") for k, v in schema(r).items()}
+    check("A5", "lamps of the area are prefilled", r["step_id"] == "zone_lamps" and set(sug.get("lamps") or []) == {"light.work_station_lamp", "light.work_station_light_stick"}, str(sug))
+    B.flow_step(fid, {"lamps": sug["lamps"]}); B.flow_step(fid, {"next_step_id": "more_zones"}); B.flow_step(fid, {"next_step_id": "save"})
+    r = B.flow_step(fid, {})
+    B.wait(lambda: B.state(f"sensor.{study}_ambient_lux") != "MISSING", 30)
+    a_ = B.get(f"sensor.{study}_ambient_lux")
+    check("A6", "entry created: entities use the area-based zone key, the zone keeps the custom name", r["type"] == "create_entry"
+          and a_["state"] != "MISSING" and "Кабинет" in a_["attributes"].get("friendly_name", ""), f"{r['type']} {a_['attributes'].get('friendly_name')}")
+    check("A7", "its lamps were added", all(B.state(f"sensor.light_target_{k}") != "MISSING" for k in ("work_station_lamp", "work_station_light_stick")))
+    f = B.options_start(B.entries()[0]["entry_id"]); fid = f["flow_id"]
+    r = B.options_step(fid, {"next_step_id": "new_zone"})
+    check("A8", "options flow 'add a zone' offers the areas without the one already used", r["step_id"] == "new_zone"
+          and [o["label"] for o in schema(r)["area"]["selector"]["select"]["options"]] == ["Гостиная"], str(r.get("step_id")))
+    r = B.options_step(fid, {"area": ids["Гостиная"]})
+    sug = {k: v.get("description", {}).get("suggested_value") for k, v in schema(r).items()}
+    check("A9", "options flow prefills name and key", r["step_id"] == "zone_name" and sug == {"name": "Гостиная", "key": ids["Гостиная"]}, str(sug))
+    B.req("DELETE", "/api/config/config_entries/options/flow/" + fid)
+    for ent in ("light.work_station_lamp", "light.work_station_light_stick"):
+        B.ws({"type": "config/entity_registry/update", "entity_id": ent, "area_id": None})
+    for aid in ids.values():
+        B.ws({"type": "config/area_registry/delete", "area_id": aid})
+    for e in B.entries():
+        B.req("DELETE", "/api/config/config_entries/entry/" + e["entry_id"])
+    time.sleep(1)
+
+
+def t_draft():
+    """Wizard progress survives a closed dialog: abort mid-way, start again, resume, finish."""
+    reset_world(); B.seed()
+    draft_file = "/tmp/hatest_int/config/.storage/adaptive_light_wizard_draft"
+    subprocess.run(["rm", "-f", draft_file])
+    f = B.flow_start(); fid = f["flow_id"]
+    check("D1", "fresh start: no resume option", f["step_id"] == "user" and "resume_draft" not in f["menu_options"], str(f.get("menu_options")))
+    B.flow_step(fid, {"next_step_id": "global_sensors"})
+    B.flow_step(fid, {"radiation": "sensor.general_graz_meteo_station_global_radiation"})
+    B.flow_step(fid, {"name": "Hall"})
+    B.flow_step(fid, {"illuminance": "sensor.bedroom_lux"})
+    r = B.flow_step(fid, {"lamps": ["light.work_station_lamp"]})
+    check("D2", "wizard reached the groups menu", r["step_id"] == "groups_menu", r["step_id"])
+    B.req("DELETE", "/api/config/config_entries/flow/" + fid)             # the user closes the dialog
+    check("D3", "no config entry exists after the abort", not B.entries())
+    import os
+    check("D4", "the draft is on disk", os.path.exists(draft_file) and "Hall" in open(draft_file).read())
+    f = B.flow_start(); fid = f["flow_id"]
+    check("D5", "next start offers resume and discard", f["step_id"] == "user" and f["menu_options"] == ["resume_draft", "global_sensors", "preset_plan", "discard_draft"], str(f.get("menu_options")))
+    check("D6", "the menu tells what was saved", "Hall" in str(f.get("description_placeholders")) , str(f.get("description_placeholders")))
+    r = B.flow_step(fid, {"next_step_id": "resume_draft"})
+    check("D7", "resume continues at the groups menu", r["step_id"] == "groups_menu", r["step_id"])
+    B.flow_step(fid, {"next_step_id": "more_zones"}); B.flow_step(fid, {"next_step_id": "save"})
+    r = B.flow_step(fid, {})
+    B.wait(lambda: B.state("sensor.hall_ambient_lux") != "MISSING", 30)
+    check("D8", "entry created with everything entered before the abort (zone, illuminance, lamp)", r["type"] == "create_entry"
+          and B.state("sensor.hall_ambient_lux") not in ("MISSING", "unavailable") and B.state("sensor.light_target_work_station_lamp") != "MISSING"
+          and B.state("sensor.light_target_work_station_light_stick") == "MISSING", str(r.get("type")))
+    check("D9", "the draft is removed once the entry exists", not os.path.exists(draft_file))
+    for e in B.entries():
+        B.req("DELETE", "/api/config/config_entries/entry/" + e["entry_id"])
+    time.sleep(1)
+    f = B.flow_start(); fid = f["flow_id"]
+    B.flow_step(fid, {"next_step_id": "global_sensors"}); B.flow_step(fid, {"radiation": "sensor.general_graz_meteo_station_global_radiation"})
+    B.req("DELETE", "/api/config/config_entries/flow/" + fid)
+    f = B.flow_start(); fid = f["flow_id"]
+    r = B.flow_step(fid, {"next_step_id": "discard_draft"})
+    check("D10", "discard removes the draft and returns to the start menu", r["step_id"] == "user" and "resume_draft" not in r["menu_options"] and not os.path.exists(draft_file), str(r.get("menu_options")))
+    B.req("DELETE", "/api/config/config_entries/flow/" + fid)
+
+
 if __name__ == "__main__":
-    which = sys.argv[1:] or ["wizard", "restart", "options", "scenarios", "calibration"]
+    which = sys.argv[1:] or ["wizard", "areas", "draft", "restart", "options", "scenarios", "calibration"]
     for w in which:
         print(f"== {w}", flush=True)
         globals()["t_" + w]()

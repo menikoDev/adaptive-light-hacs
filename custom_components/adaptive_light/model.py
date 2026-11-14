@@ -7,7 +7,8 @@ the runtime reads it through ``Config``.
       "version": 2,
       "params":  {name: value},                                  # global overrides
       "sensors": [{"entity", "role", "zone"}],                   # zone "" = global (radiation, elevation)
-      "zones":   [{"key", "name", "params", "bindings"}],        # one per room, the first is the primary one
+      "zones":   [{"key", "name", "params", "bindings", "area_id"?}],  # one per room, the first is the primary one;
+                                                                 # area_id = Home Assistant Area it was created from
       "lamps":   [{"key", "entity", "zone", "name", "params"}],  # any number
       "groups":  [{"key", "name", "zone", "lamps": [keys], "params", "share_pause"}]
     }
@@ -59,7 +60,9 @@ def slug(text: str) -> str:
 
 
 def validate(cfg: dict) -> list[ConfigError]:
-    """All problems of a config; empty list = usable. Codes are translation keys of the config flow."""
+    """All problems of a config; empty list = usable. Codes are translation keys of the config flow.
+
+    A zone does not need an illuminance sensor: without one the runtime estimates the room from daylight only."""
     errs: list[ConfigError] = []
     zones = {z["key"] for z in cfg.get("zones", [])}
     zlist = [z["key"] for z in cfg.get("zones", [])]
@@ -101,8 +104,6 @@ def validate(cfg: dict) -> list[ConfigError]:
         if dom not in ROLE_DOMAINS[role]:
             errs.append(ConfigError("bad_sensor_domain", f"{s.get('entity')} as {role}"))
     for z in cfg.get("zones", []):
-        if not any(s["role"] == "illuminance" and s.get("zone") == z["key"] for s in cfg.get("sensors", [])):
-            errs.append(ConfigError("zone_needs_illuminance", z["key"]))
         for slot, key in (z.get("bindings") or {}).items():
             kind = BINDING_SLOTS.get(slot)
             if kind is None:

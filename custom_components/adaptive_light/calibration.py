@@ -155,8 +155,14 @@ def validate_candidates(cand: dict[str, float], known_keys) -> dict[str, float]:
     return out
 
 
-def open_k_blockers(*, mode: str | None, daylight: float | None, any_lamp_on: bool, lux: float | None) -> str | None:
+NO_SENSOR_REASON = "the zone has no illuminance sensor (calibration measures lux)"
+
+
+def open_k_blockers(*, mode: str | None, daylight: float | None, any_lamp_on: bool, lux: float | None,
+                    has_sensor: bool = True) -> str | None:
     """Reason why light_open_calibrate must not run now, or None."""
+    if not has_sensor:
+        return NO_SENSOR_REASON
     if mode != "Day":
         return "mode is not Day"
     if daylight is None or daylight < 40:

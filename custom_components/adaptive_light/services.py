@@ -23,6 +23,8 @@ class ZoneCalibrationIO:
     def blockers(self) -> str | None:
         """Why a night calibration must not start (None = go): sun, mode, presence, TV/monitors."""
         s = self.hass.states
+        if not self.cfg.sensor("illuminance", self.zone):
+            return calibration.NO_SENSOR_REASON
         elev = self.cfg.sensor("elevation")
         if elev:
             st = s.get(elev)
@@ -182,7 +184,8 @@ async def async_calibrate_apply(hass, mgr, zone: str | None = None) -> dict:
 async def async_calibrate_open_k(hass, mgr, zone: str | None = None) -> float:
     z = pick_zone(mgr, zone)
     i = mgr.inputs_for(z)
-    why = calibration.open_k_blockers(mode=i.mode, daylight=i.daylight, any_lamp_on=any(s.on for s in i.lamps.values()), lux=i.lux)
+    why = calibration.open_k_blockers(mode=i.mode, daylight=i.daylight, any_lamp_on=any(s.on for s in i.lamps.values()), lux=i.lux,
+                                    has_sensor=mgr.has_lux_sensor(z))
     if why:
         raise ValueError(f"conditions not met: {why}")
     k = calibration.open_k_candidate(i.lux, i.daylight)

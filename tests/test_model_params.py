@@ -18,7 +18,7 @@ def test_plan_preset_and_two_rooms_are_valid():
 def test_empty_and_broken_configs_are_rejected():
     assert "no_zones" in codes(empty_config())
     c = two_rooms(); c["sensors"] = [s for s in c["sensors"] if not (s["zone"] == "bedroom" and s["role"] == "illuminance")]
-    assert "zone_needs_illuminance" in codes(c)
+    assert not codes(c)   # the illuminance sensor is optional (0.3.0)
     c = two_rooms(); c["groups"][-1]["lamps"].append("top_left")
     assert "lamp_zone_mismatch" in codes(c)
     c = two_rooms(); c["lamps"][-1]["entity"] = c["lamps"][0]["entity"]

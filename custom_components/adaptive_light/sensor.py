@@ -61,7 +61,7 @@ class ZoneSensor(AdaptiveEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         if self._vkey == "ambient":
-            return {"lamps_lx": self._v.get("ambient_lamps_lx"), "zone": self._zone}
+            return {"lamps_lx": self._v.get("ambient_lamps_lx"), "source": self._v.get("lux_source"), "zone": self._zone}
         if self._vkey == "openness":
             return {"low_count": self._v.get("low_count"), "zone": self._zone}
         return {"zone": self._zone}

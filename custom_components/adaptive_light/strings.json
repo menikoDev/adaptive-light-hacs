@@ -4,10 +4,12 @@
     "step": {
       "user": {
         "title": "Set up",
-        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room).",
+        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room). Progress is saved after every step, so closing this window by accident does not lose it.\n\n{draft}",
         "menu_options": {
           "global_sensors": "Step-by-step wizard",
-          "preset_plan": "Preset: living room of the YAML plan"
+          "preset_plan": "Preset: living room of the YAML plan",
+          "resume_draft": "Continue the unfinished setup",
+          "discard_draft": "Discard the unfinished setup"
         }
       },
       "global_sensors": {
@@ -33,21 +35,29 @@
       },
       "zone": {
         "title": "New zone",
-        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
         "data": {
-          "name": "Name"
+          "area": "Area (optional)"
         }
       },
       "new_zone": {
         "title": "New zone",
-        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
         "data": {
-          "name": "Name"
+          "area": "Area (optional)"
+        }
+      },
+      "zone_name": {
+        "title": "Name of the zone",
+        "description": "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
+        "data": {
+          "name": "Name",
+          "key": "Zone key (optional)"
         }
       },
       "zone_sensors": {
         "title": "Sensors of {zone}",
-        "description": "Illuminance is required. Presence and media sensors are used by calibration and executors.",
+        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled.",
         "data": {
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
@@ -89,7 +99,7 @@
       },
       "zone_lamps": {
         "title": "Lamps of {zone}",
-        "description": "Pick the light entities of this zone. Each becomes a lamp with its own auto switch.",
+        "description": "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
         "data": {
           "lamps": "Lamps"
         }
@@ -270,7 +280,7 @@
       "bad_role": "Unknown sensor role",
       "role_zone_mismatch": "Sensor role does not fit its zone",
       "bad_sensor_domain": "The entity type does not fit the role",
-      "zone_needs_illuminance": "Every zone needs an illuminance sensor",
+      "zone_needs_name": "Enter a zone name",
       "bad_binding": "Invalid behaviour binding",
       "no_zones": "Add at least one zone",
       "group_needs_lamps": "Pick at least one lamp"
@@ -283,10 +293,12 @@
     "step": {
       "user": {
         "title": "Set up",
-        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room).",
+        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room). Progress is saved after every step, so closing this window by accident does not lose it.\n\n{draft}",
         "menu_options": {
           "global_sensors": "Step-by-step wizard",
-          "preset_plan": "Preset: living room of the YAML plan"
+          "preset_plan": "Preset: living room of the YAML plan",
+          "resume_draft": "Continue the unfinished setup",
+          "discard_draft": "Discard the unfinished setup"
         }
       },
       "global_sensors": {
@@ -312,21 +324,29 @@
       },
       "zone": {
         "title": "New zone",
-        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
         "data": {
-          "name": "Name"
+          "area": "Area (optional)"
         }
       },
       "new_zone": {
         "title": "New zone",
-        "description": "A zone is one room: its lamps plus its illuminance and presence sensors.",
+        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
         "data": {
-          "name": "Name"
+          "area": "Area (optional)"
+        }
+      },
+      "zone_name": {
+        "title": "Name of the zone",
+        "description": "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
+        "data": {
+          "name": "Name",
+          "key": "Zone key (optional)"
         }
       },
       "zone_sensors": {
         "title": "Sensors of {zone}",
-        "description": "Illuminance is required. Presence and media sensors are used by calibration and executors.",
+        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled.",
         "data": {
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
@@ -368,7 +388,7 @@
       },
       "zone_lamps": {
         "title": "Lamps of {zone}",
-        "description": "Pick the light entities of this zone. Each becomes a lamp with its own auto switch.",
+        "description": "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
         "data": {
           "lamps": "Lamps"
         }
@@ -549,7 +569,7 @@
       "bad_role": "Unknown sensor role",
       "role_zone_mismatch": "Sensor role does not fit its zone",
       "bad_sensor_domain": "The entity type does not fit the role",
-      "zone_needs_illuminance": "Every zone needs an illuminance sensor",
+      "zone_needs_name": "Enter a zone name",
       "bad_binding": "Invalid behaviour binding",
       "no_zones": "Add at least one zone",
       "group_needs_lamps": "Pick at least one lamp"

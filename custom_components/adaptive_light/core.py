@@ -55,6 +55,17 @@ def ambient(lux: float | None, lamps: Mapping[str, LampState], p: Mapping[str, f
     return round(max(raw, 0), 1)
 
 
+def estimate_lux(daylight: float | None, lamps: Mapping[str, LampState], p: Mapping[str, float]) -> float | None:
+    """Illuminance a zone WITHOUT a sensor would read: daylight through the windows (open_k lx per 1% of daylight),
+    the dark offset and the zone's own lamps. None when the daylight factor is unavailable.
+
+    Feeding this into ``ambient`` gives back exactly ``open_k * daylight``: with no sensor the room is assumed
+    to be lit by daylight only, and the lamps cannot influence the estimate (no feedback loop)."""
+    if daylight is None:
+        return None
+    return round(_f(p.get("light_open_k"), 1) * daylight + _f(p.get("light_dark_lux_offset"), 0) + lamps_lx(lamps, p), 1)
+
+
 def trust(
     daylight: float | None,
     openness: float | None,
