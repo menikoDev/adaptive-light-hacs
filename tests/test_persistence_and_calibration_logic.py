@@ -67,7 +67,6 @@ def test_open_k_blockers():
 
 class Room:
     def __init__(self, k): self.k, self.pct, self.restored, self.snap = k, {}, 0, None
-    async def preconditions_ok(self): return True
     async def snapshot(self): self.snap = dict(self.pct)
     async def restore(self): self.restored += 1; self.pct = dict(self.snap)
     async def all_off(self): self.pct = {}

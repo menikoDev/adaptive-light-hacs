@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
-from . import services as svc
+from . import calibration, services as svc
 from .const import CONF_CONFIG, DOMAIN, PLATFORMS, SERVICES
 from .manager import AdaptiveLightManager
 from .model import Config
@@ -84,7 +84,10 @@ def _register_services(hass: HomeAssistant) -> None:
         await m.controller_tick()
     async def clear(m, c): m.clear_pauses()
     async def reset(m, c): m.openness_tick(reset=True)
-    async def calib(m, c): await svc.async_calibrate(hass, m, c.data.get("zone"), c.data["settle_s"], c.data["wait"])
+    async def calib(m, c):
+        z = svc.pick_zone(m, c.data.get("zone"))
+        await svc.async_calibrate(hass, m, z, c.data["settle_s"], c.data["wait"])
+        return {"zone": z, "warnings": m.calibration_warnings.get(z, []), "caution": calibration.CAUTION_EN, "caution_ru": calibration.CAUTION_RU}
     async def cancel(m, c): await svc.async_calibrate_cancel(hass, m, c.data.get("zone"))
     async def apply(m, c): return {"applied": await svc.async_calibrate_apply(hass, m, c.data.get("zone"))}
     async def openk(m, c): return {"open_k": await svc.async_calibrate_open_k(hass, m, c.data.get("zone"))}
@@ -97,7 +100,7 @@ def _register_services(hass: HomeAssistant) -> None:
         "clear_pauses": (clear, {}, SupportsResponse.NONE),
         "openness_reset": (reset, {}, SupportsResponse.NONE),
         "calibrate": (calib, {**zone, vol.Optional("settle_s", default=60): vol.All(vol.Coerce(float), vol.Range(min=0, max=600)),
-                              vol.Optional("wait", default=False): cv.boolean}, SupportsResponse.NONE),
+                              vol.Optional("wait", default=False): cv.boolean}, SupportsResponse.OPTIONAL),
         "calibrate_cancel": (cancel, zone, SupportsResponse.NONE),
         "calibrate_apply": (apply, zone, SupportsResponse.OPTIONAL),
         "calibrate_open_k": (openk, zone, SupportsResponse.OPTIONAL),

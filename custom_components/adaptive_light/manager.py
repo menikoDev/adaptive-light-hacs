@@ -45,6 +45,7 @@ class AdaptiveLightManager:
         self.executors = None
         self.calibration_tasks: dict[str, Any] = {}
         self.calibration_status: dict[str, str] = {}
+        self.calibration_warnings: dict[str, list[str]] = {}
         self.set_config(cfg)
 
     # ------------------------------------------------------------ config

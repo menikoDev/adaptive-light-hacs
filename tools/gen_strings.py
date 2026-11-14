@@ -48,7 +48,7 @@ ROLE = {
     "elevation": ("Sun elevation sensor (daylight source)", "Высота солнца (источник дневного света)"),
     "illuminance": ("Illuminance sensor", "Датчик освещённости"),
     "presence": ("Presence sensor", "Датчик присутствия"),
-    "media": ("TV / monitors (calibration condition)", "ТВ / мониторы (условие калибровки)"),
+    "media": ("TV / monitors (calibration warning)", "ТВ / мониторы (предупреждение при калибровке)"),
     "sofa": ("Sofa sensor", "Датчик дивана"), "table": ("Table sensor", "Датчик стола"),
     "fridge": ("Fridge zone sensor", "Датчик зоны холодильника"), "entrance": ("Entrance sensor", "Датчик входа"),
     "carpet": ("Carpet sensor", "Датчик ковра"), "window_advice": ("Window advice sensor", "Подсказка по окну"),
@@ -85,8 +85,8 @@ UI = {  # key: (en, ru)
                  "Зона — это комната. Выберите одну из областей (Areas) Home Assistant: название, ключ, лампы и датчики подставятся сами. Или оставьте поле пустым для своей зоны."),
     "zone_name": ("Name of the zone", "Название зоны", "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
                   "Область: {area}. Название видно в Home Assistant, его можно изменить. Ключ — короткий латинский id для сущностей и настроек; пустой = получить из названия."),
-    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled.",
-                     "Все необязательные. Без датчика освещённости зона считает свет по дневному свету и не калибруется. Датчики из области подставлены."),
+    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
+                     "Все необязательные. Без датчика освещённости зона считает свет по дневному свету и не калибруется. Датчики из области подставлены. Присутствие и ТВ / мониторы калибровку не блокируют, а только дают предупреждение: люди, работающий ТВ и дневной свет искажают результат. Пока идёт калибровка, не включайте и не выключайте лампы и не меняйте их вручную."),
     "zone_extra_sensors": ("Extra sensors of {zone}", "Дополнительные датчики {zone}", "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
                            "Только для сценариев поведения (холодильник, диван, окна ...). Оставьте пустым, если не нужно."),
     "zone_lamps": ("Lamps of {zone}", "Лампы зоны {zone}", "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
@@ -120,6 +120,25 @@ MENU = {  # step: {option: (en, ru)}
 }
 FIELD = {"name": ("Name", "Название"), "area": ("Area (optional)", "Область (необязательно)"), "key": ("Zone key (optional)", "Ключ зоны (необязательно)"), "lamps": ("Lamps", "Лампы"), "share_pause": ("Manual change pauses the whole group", "Ручное изменение ставит на паузу всю группу"),
          "zone": ("Zone", "Зона"), "lamp": ("Lamp", "Лампа"), "group": ("Group", "Группа")}
+CALIB_DESC = (
+    "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores "
+    "candidates; nothing is applied until calibrate_apply. It refuses to start only when the zone has no illuminance sensor or "
+    "a calibration of the zone is already running. Darkness, mode Night, an empty room and a switched-off TV give the best result, "
+    "but none of them is required: unfavourable conditions only produce a warning (log, persistent notification, the warnings "
+    "attribute of the calibration sensor and the service response). Do not turn the lamps on or off and do not change them by hand "
+    "while the calibration runs. Daylight, people in the room and a running TV or monitor distort the result.",
+    "Измеряет люксы на 1% у каждой лампы зоны на трёх уровнях (около 4 минут на лампу при времени ожидания по умолчанию) и сохраняет "
+    "кандидатов; пока не вызвана calibrate_apply, ничего не применяется. Отказ только по техническим причинам: у зоны нет датчика "
+    "освещённости или калибровка зоны уже идёт. Лучший результат дают темнота, режим Night, пустая комната и выключенный ТВ, "
+    "но ничего из этого не обязательно: неблагоприятные условия дают только предупреждение (журнал, постоянное уведомление, атрибут "
+    "warnings у датчика калибровки и ответ службы). Пока идёт калибровка, не включайте и не выключайте лампы и не меняйте их "
+    "вручную. Дневной свет, присутствие людей и работающий ТВ или монитор искажают результат.")
+CALIB_FIELDS = {
+    "zone": ("Zone key (the main zone by default).", "Ключ зоны (по умолчанию основная)."),
+    "settle_s": ("Seconds to wait after every lamp change before reading the illuminance.", "Секунд ожидания после каждого изменения лампы перед чтением освещённости."),
+    "wait": ("Wait until the calibration finishes (can take many minutes). Do not touch the lamps meanwhile.",
+             "Ждать окончания калибровки (может занять много минут). Не трогайте лампы в это время."),
+}
 SERV = {
     "controller_tick": ("Run controller tick", "Один такт контроллера"), "clear_pauses": ("Clear manual pauses", "Сбросить паузы"),
     "openness_reset": ("Reset openness", "Сбросить открытость"), "calibrate": ("Calibrate lamps (night)", "Калибровка ламп (ночь)"),
@@ -165,6 +184,8 @@ def build(i: int) -> dict:
            "options": {"step": steps, "error": err},
            "selector": {"yes_no": {"options": {"yes": "Yes" if i == 0 else "Да", "no": "No" if i == 0 else "Нет"}}},
            "services": {n: {"name": v[i], "description": v[i]} for n, v in SERV.items()}}
+    out["services"]["calibrate"]["description"] = CALIB_DESC[i]
+    out["services"]["calibrate"]["fields"] = {f: {"name": f, "description": d[i]} for f, d in CALIB_FIELDS.items()}
     return out
 
 

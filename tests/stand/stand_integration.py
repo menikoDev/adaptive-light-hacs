@@ -225,10 +225,14 @@ def t_calibration():
     try:
         B.put("binary_sensor.living_room_presence_sensor", "on")
         try:
-            B.call("adaptive_light.calibrate", {"zone": "living_room", "settle_s": 1}); blocked = False
-        except RuntimeError as e:
-            blocked = "presence" in str(e)
-        check("K1", "calibration refuses to start while somebody is present", blocked)
+            B.call("adaptive_light.calibrate", {"zone": "living_room", "settle_s": 1}); started = True
+        except RuntimeError:
+            started = False
+        check("K1", "presence is only a warning: calibration still starts", started)
+        check("K1b", "the warning is on the calibration sensor", B.wait(lambda: any("presence" in w for w in B.get("sensor.light_calibration")["attributes"].get("warnings", [])), 10),
+              str(B.get("sensor.light_calibration")["attributes"].get("warnings")))
+        B.call("adaptive_light.calibrate_cancel", {"zone": "living_room"})
+        B.wait(lambda: B.state("sensor.light_calibration") == "cancelled", 30)
         B.put("binary_sensor.living_room_presence_sensor", "off")
         B.call("adaptive_light.calibrate", {"zone": "living_room", "settle_s": 1.5})
         check("K2", "calibration running (status sensor)", B.wait(lambda: B.state("sensor.light_calibration").startswith("running"), 10), B.state("sensor.light_calibration"))

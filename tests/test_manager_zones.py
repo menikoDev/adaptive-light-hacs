@@ -2,7 +2,7 @@
 import asyncio, datetime as dt, types
 import pytest
 
-from adaptive_light import calibration, services as svc
+from adaptive_light import calibration, flow_ops as ops, services as svc
 from adaptive_light.manager import AdaptiveLightManager
 from adaptive_light.persistence import MemoryStore
 from legacy import DEFAULT_LAMP_ENTITIES
@@ -193,26 +193,92 @@ def test_zone_calibration_then_apply_writes_k_and_dark_offset():
     assert "bedroom" not in m.state.candidates and m.saved_configs
 
 
-def test_calibration_blockers_and_apply_without_candidates():
+def record_notes(hass):
+    notes, inner = [], hass.services.async_call
+    async def call(domain, service, data, blocking=False, context=None):
+        if domain == "persistent_notification":
+            notes.append(data)
+            return
+        return await inner(domain, service, data, blocking=blocking, context=context)
+    hass.services.async_call = call
+    return notes
+
+
+def test_calibration_refuses_only_for_technical_reasons():
     m, hass, _ = calib_setup()
-    hass.states["binary_sensor.bedroom_presence"] = St("on")
-    with pytest.raises(ValueError, match="presence"):
-        run(svc.async_calibrate(hass, m, "bedroom", 1))
-    hass.states["binary_sensor.bedroom_presence"] = St("off")
-    hass.states["sensor.general_sun_solar_elevation"] = St("10")
-    with pytest.raises(ValueError, match="sun"):
-        run(svc.async_calibrate(hass, m, "bedroom", 1))
     with pytest.raises(ValueError, match="no calibration candidates"):
         run(svc.async_calibrate_apply(hass, m, "bedroom"))
     with pytest.raises(ValueError, match="unknown zone"):
         run(svc.async_calibrate(hass, m, "garage", 1))
 
+    async def twice():
+        t = await svc.async_calibrate(hass, m, "bedroom", 1)
+        with pytest.raises(ValueError, match="already running"):
+            await svc.async_calibrate(hass, m, "bedroom", 1)
+        await t
+    run(twice())
+    assert m.calibration_status["bedroom"] == "done"
 
-def test_calibration_aborts_on_presence_and_restores():
+
+@pytest.mark.parametrize("what", ["presence", "sun", "mode", "tv", "all"])
+def test_bad_conditions_warn_but_calibration_runs(what, caplog):
     m, hass, sim = calib_setup()
-    sim.bg = 9                                                      # too bright
+    raw = m.cfg.to_dict()
+    ops.set_media(raw, "bedroom", ["media_player.bed_tv"])
+    m._replace_config(raw)
+    hass.states["media_player.bed_tv"] = St("off")
+    m.set_param("zone", "bedroom", "mode_entity", "input_select.living_room_light_mode")
+    notes = record_notes(hass)
+    bad = {"presence": ("presence",), "sun": ("sun is at 10",), "mode": ("not Night",), "tv": ("media_player.bed_tv",),
+           "all": ("presence", "sun is at 10", "not Night", "media_player.bed_tv")}[what]
+    if "presence" in bad:
+        hass.states["binary_sensor.bedroom_presence"] = St("on")
+    if "sun is at 10" in bad:
+        hass.states["sensor.general_sun_solar_elevation"] = St("10")
+    if "not Night" in bad:
+        hass.states["input_select.living_room_light_mode"] = St("Day")
+    if "media_player.bed_tv" in bad:
+        hass.states["media_player.bed_tv"] = St("playing")
+    with caplog.at_level("WARNING"):
+        run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
+    assert m.calibration_status["bedroom"] == "done" and "bedroom" in m.state.candidates
+    warns = m.calibration_warnings["bedroom"]
+    for word in bad:
+        assert any(word in w for w in warns), (word, warns)
+    assert any(r.levelname == "WARNING" and "starts despite" in r.getMessage() and bad[0] in r.getMessage() for r in caplog.records)
+    start = [n for n in notes if n["title"].startswith("Light calibration started")]
+    assert len(start) == 1 and start[0]["notification_id"].endswith("_warning")
+    assert "do not turn the lamps on or off" in start[0]["message"].lower() and "вручную" in start[0]["message"]
+    assert all(word in start[0]["message"] for word in bad)
+    assert not any("blocked" in n["message"] for n in notes)
+
+
+def test_good_conditions_still_show_the_hands_off_caution(caplog):
+    m, hass, _ = calib_setup()
+    notes = record_notes(hass)
+    with caplog.at_level("WARNING"):
+        run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
+    assert m.calibration_warnings["bedroom"] == []
+    assert any("do not turn the lamps on or off" in r.getMessage().lower() for r in caplog.records)
+    assert any("do not turn the lamps on or off" in n["message"].lower() for n in notes)
+
+
+def test_calibration_with_bright_background_finishes_with_warning():
+    m, hass, sim = calib_setup()
+    sim.bg = 9
+    run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
+    assert m.calibration_status["bedroom"] == "done"
+    assert any("not darkness" in w for w in m.calibration_warnings["bedroom"])
+    assert m.state.candidates["bedroom"]["bg0"] == pytest.approx(9, abs=0.01)
+
+
+def test_calibration_aborts_when_a_lamp_changes_nothing_and_restores():
+    m, hass, sim = calib_setup()
+    sim.K = {**sim.K, "bed_ceiling": 0.0}
+    hass.states["light.bed_night"] = St("on", brightness=40)
     run(svc.async_calibrate(hass, m, "bedroom", 1, wait=True))
     assert m.calibration_status["bedroom"] == "aborted" and "bedroom" not in m.state.candidates
+    assert hass.states["light.bed_night"].state == "on"
 
 
 def test_open_k_service():

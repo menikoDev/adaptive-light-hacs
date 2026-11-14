@@ -20,33 +20,30 @@ class ZoneCalibrationIO:
 
     def _ent(self, key): return self.cfg.entity_of(key)
 
-    def blockers(self) -> str | None:
-        """Why a night calibration must not start (None = go): sun, mode, presence, TV/monitors."""
-        s = self.hass.states
+    def blocker(self) -> str | None:
+        """Technical reason a calibration cannot run at all (None = can run). Conditions are warnings, see ``warnings``."""
         if not self.cfg.sensor("illuminance", self.zone):
             return calibration.NO_SENSOR_REASON
-        elev = self.cfg.sensor("elevation")
-        if elev:
-            st = s.get(elev)
-            try:
-                if not float(st.state) < -8:
-                    return "sun is above -8 degrees"
-            except (AttributeError, ValueError):
-                return "no solar elevation"
-        mode_ent = self.mgr._zone_p[self.zone]["mode_entity"]
-        if mode_ent and self.mgr.zone_mode(self.zone) != "Night":
-            return "mode is not Night"
-        pres = self.cfg.sensor("presence", self.zone)
-        if pres and (s.get(pres) is None or s.get(pres).state != "off"):
-            return "presence detected"
-        for m in self.cfg.sensors("media", self.zone):
-            st = s.get(m)
-            if st is not None and st.state in MEDIA_ACTIVE:
-                return f"{m} is active"
         return None
 
-    async def preconditions_ok(self) -> bool:
-        return self.blockers() is None
+    def warnings(self) -> list[str]:
+        """Advisory condition warnings (sun, mode, presence, TV/monitors). They never stop the calibration."""
+        s = self.hass.states
+        elev = self.cfg.sensor("elevation")
+        elevation = None
+        if elev:
+            try:
+                elevation = float(s.get(elev).state)
+            except (AttributeError, ValueError, TypeError):
+                elevation = None
+        mode_ent = self.mgr._zone_p[self.zone]["mode_entity"]
+        pres = self.cfg.sensor("presence", self.zone)
+        pst = s.get(pres) if pres else None
+        media = [m for m in self.cfg.sensors("media", self.zone) if s.get(m) is not None and s.get(m).state in MEDIA_ACTIVE]
+        return calibration.condition_warnings(
+            has_elevation=bool(elev), elevation=elevation, has_mode=bool(mode_ent),
+            mode=self.mgr.zone_mode(self.zone) if mode_ent else None,
+            presence_on=bool(pres) and (pst is None or pst.state != "off"), active_media=media)
 
     async def snapshot(self) -> None:
         for k in self.cfg.lamps_in_zone(self.zone):
@@ -111,22 +108,36 @@ async def _notify(hass, title: str, message: str, nid: str) -> None:
 async def async_calibrate(hass, mgr, zone: str | None = None, settle_s: float = 60, wait: bool = False):
     """Start the night calibration of one zone in the background (about 22 minutes for 5 lamps at 60 s settle).
 
+    Refuses only for technical reasons (no illuminance sensor, already running). Unfavourable conditions (daylight, mode,
+    presence, TV) are logged and shown as a persistent notification, the calibration still starts: the user decides.
+    The warnings are kept in ``mgr.calibration_warnings[zone]``.
+
     Returns the asyncio task (tests wait on it). Never writes lamp parameters: candidates go to the store."""
     z = pick_zone(mgr, zone)
     running = mgr.calibration_tasks.get(z)
     if running and not running.done():
         raise ValueError(f"calibration of zone {z} is already running")
     io = ZoneCalibrationIO(hass, mgr, z)
-    why = io.blockers()
+    why = io.blocker()
     if why:
         await _notify(hass, "Light calibration not started", f"Zone {z}: {why}.", f"adaptive_light_calib_{z}")
-        raise ValueError(f"calibration blocked: {why}")
+        raise ValueError(f"calibration cannot run: {why}")
+    warns = io.warnings()
+    mgr.calibration_warnings[z] = list(warns)
+    if warns:
+        _LOGGER.warning("calibration of zone %s starts despite: %s", z, "; ".join(warns))
+    _LOGGER.warning("calibration of zone %s: %s", z, calibration.CAUTION_EN)
+    start = f"Zone {z}: calibration started.\n\n"
+    if warns:
+        start += "Warnings:\n" + "\n".join(f"- {w}" for w in warns) + "\n\n"
+    await _notify(hass, f"Light calibration started: {z}", start + calibration.CAUTION, f"adaptive_light_calib_{z}_warning")
     lamps = {k: P.parse_levels(mgr._lamp_p[k]["calib_levels"]) for k in mgr.cfg.lamps_in_zone(z)}
 
     async def job():
         try:
             mgr.set_calibration_status(z, "running")
             res = await calibration.run_calibration(io, settle_s, lamps=lamps, progress=lambda k: mgr.set_calibration_status(z, f"running {k}"))
+            mgr.calibration_warnings[z] = list(dict.fromkeys(warns + res.warnings))
             mgr.state.candidates[z] = {"bg0": res.bg0, **res.candidates, "_ts": mgr._now().timestamp()}
             mgr.mark_dirty()
             mgr.set_calibration_status(z, "done")

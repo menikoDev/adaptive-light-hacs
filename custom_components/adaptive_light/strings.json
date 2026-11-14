@@ -20,7 +20,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensor",
-          "media": "TV / monitors (calibration condition)",
+          "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
           "fridge": "Fridge zone sensor",
@@ -57,13 +57,13 @@
       },
       "zone_sensors": {
         "title": "Sensors of {zone}",
-        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled.",
+        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
         "data": {
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensor",
-          "media": "TV / monitors (calibration condition)",
+          "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
           "fridge": "Fridge zone sensor",
@@ -84,7 +84,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensor",
-          "media": "TV / monitors (calibration condition)",
+          "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
           "fridge": "Fridge zone sensor",
@@ -309,7 +309,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensor",
-          "media": "TV / monitors (calibration condition)",
+          "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
           "fridge": "Fridge zone sensor",
@@ -346,13 +346,13 @@
       },
       "zone_sensors": {
         "title": "Sensors of {zone}",
-        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled.",
+        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
         "data": {
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensor",
-          "media": "TV / monitors (calibration condition)",
+          "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
           "fridge": "Fridge zone sensor",
@@ -373,7 +373,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensor",
-          "media": "TV / monitors (calibration condition)",
+          "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
           "fridge": "Fridge zone sensor",
@@ -598,7 +598,21 @@
     },
     "calibrate": {
       "name": "Calibrate lamps (night)",
-      "description": "Calibrate lamps (night)"
+      "description": "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores candidates; nothing is applied until calibrate_apply. It refuses to start only when the zone has no illuminance sensor or a calibration of the zone is already running. Darkness, mode Night, an empty room and a switched-off TV give the best result, but none of them is required: unfavourable conditions only produce a warning (log, persistent notification, the warnings attribute of the calibration sensor and the service response). Do not turn the lamps on or off and do not change them by hand while the calibration runs. Daylight, people in the room and a running TV or monitor distort the result.",
+      "fields": {
+        "zone": {
+          "name": "zone",
+          "description": "Zone key (the main zone by default)."
+        },
+        "settle_s": {
+          "name": "settle_s",
+          "description": "Seconds to wait after every lamp change before reading the illuminance."
+        },
+        "wait": {
+          "name": "wait",
+          "description": "Wait until the calibration finishes (can take many minutes). Do not touch the lamps meanwhile."
+        }
+      }
     },
     "calibrate_cancel": {
       "name": "Cancel calibration",

@@ -1,5 +1,9 @@
 """Night calibration of lux-per-percent (plan step 7) and daily open_k (step 7b).
 
+Calibration conditions (sun, mode, presence, TV, background light) are advice, not gates: they produce
+warnings and the user decides. Only technical impossibilities refuse or abort (no illuminance sensor,
+already running, a lamp that does not change the lux at all).
+
 The fit and the checks are pure. ``run_calibration`` drives any object implementing
 ``CalibrationIO`` (the real one wraps hass services; tests use a simulated room).
 """
@@ -17,11 +21,40 @@ LEVELS = {
     "stick": (5, 15, 30),
 }
 MAX_BG = 5.0
+SUN_LIMIT = -8.0
 MIN_GROWTH = 1.0
 
 
 class CalibrationAborted(Exception):
     pass
+
+
+CAUTION_EN = ("Do not turn the lamps on or off and do not change them by hand while the calibration runs: the lamps are driven "
+              "automatically and any manual change spoils the measurement. Daylight, people in the room and a running TV or "
+              "monitor distort the result.")
+CAUTION_RU = ("Не включайте, не выключайте и не меняйте лампы вручную, пока идёт калибровка: лампами управляет интеграция, "
+              "любое ручное изменение портит измерение. Дневной свет, присутствие людей и работающий ТВ или монитор искажают результат.")
+CAUTION = f"{CAUTION_EN}\n\n{CAUTION_RU}"
+
+
+def condition_warnings(*, has_elevation: bool = False, elevation: float | None = None, has_mode: bool = False, mode: str | None = None,
+                       presence_on: bool = False, active_media: "list[str] | None" = None) -> list[str]:
+    """Advisory warnings about the conditions of a night calibration (empty = ideal). Never a reason to refuse.
+
+    ``has_elevation`` / ``has_mode``: the zone has such an entity configured (otherwise there is nothing to judge)."""
+    out = []
+    if has_elevation:
+        if elevation is None:
+            out.append("the solar elevation is unknown: cannot tell whether it is dark")
+        elif not elevation < SUN_LIMIT:
+            out.append(f"the sun is at {elevation:g} degrees (above {SUN_LIMIT:g}): daylight will distort the measurement")
+    if has_mode and mode != "Night":
+        out.append(f"zone mode is {mode or 'unknown'}, not Night")
+    if presence_on:
+        out.append("presence detected: people in the room change the light and may touch the lamps")
+    for m in active_media or []:
+        out.append(f"{m} is active: its screen adds light and flicker")
+    return out
 
 
 @dataclass
@@ -56,7 +89,6 @@ def fit_lamp(key, levels, lux, base_before, base_after) -> LampFit:
 
 
 class CalibrationIO(Protocol):
-    async def preconditions_ok(self) -> bool: ...  # sun < -8, mode Night, presence off
     async def snapshot(self) -> None: ...
     async def restore(self) -> None: ...
     async def all_off(self) -> None: ...
@@ -70,6 +102,7 @@ class CalibrationIO(Protocol):
 class CalibrationResult:
     bg0: float
     fits: dict[str, LampFit]
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def candidates(self) -> dict[str, float]:
@@ -88,22 +121,26 @@ async def run_calibration(
     parameter so the calibration does not depend on how lamps end up being configured.
     """
     lamps = lamps or LEVELS
-    if not await io.preconditions_ok():
-        raise CalibrationAborted("preconditions not met (sun below -8, mode Night, nobody present)")
+    warnings: list[str] = []
     await io.snapshot()
     try:
         await io.all_off()
         await io.sleep(round(settle_s * 1.5))
         bg0 = await io.read_lux()
-        if bg0 is None or bg0 > MAX_BG:
-            raise CalibrationAborted(f"background {bg0} lx with all lamps off (allowed 0..{MAX_BG})")
+        if bg0 is None:
+            raise CalibrationAborted("no illuminance reading with all lamps off")
+        if bg0 > MAX_BG:
+            warnings.append(f"background {bg0} lx with all lamps off is not darkness (expected up to {MAX_BG} lx): k may be inaccurate, "
+                            f"and calibrate_apply would write dark_lux_offset = {round(min(bg0, DARK_RANGE[1]), 2)}")
         fits: dict[str, LampFit] = {}
         for key, levels in lamps.items():
             if progress:
                 progress(key)
             before = await io.read_lux()
-            if before is None or before > MAX_BG or await io.presence_on():
-                raise CalibrationAborted(f"before {key}: background {before} lx or presence detected")
+            if before is None:
+                raise CalibrationAborted(f"before {key}: no illuminance reading")
+            if await io.presence_on():
+                _warn_once(warnings, f"presence detected during the measurement of {key}")
             readings = []
             for pct in levels:
                 await io.set_lamp(key, pct)
@@ -113,12 +150,19 @@ async def run_calibration(
             await io.sleep(settle_s)
             after = await io.read_lux() or 0.0
             fit = fit_lamp(key, levels, tuple(readings), before, after)
-            if fit.lux[2] - fit.base < MIN_GROWTH or await io.presence_on():
-                raise CalibrationAborted(f"{key}: no growth or presence detected")
+            if fit.lux[2] - fit.base < MIN_GROWTH:
+                raise CalibrationAborted(f"{key}: the lamp does not change the illuminance (no growth)")
+            if await io.presence_on():
+                _warn_once(warnings, f"presence detected during the measurement of {key}")
             fits[key] = fit
-        return CalibrationResult(bg0, fits)
+        return CalibrationResult(bg0, fits, warnings)
     finally:
         await io.restore()
+
+
+def _warn_once(warnings: list[str], text: str) -> None:
+    if text not in warnings:
+        warnings.append(text)
 
 
 def open_k_candidate(lux: float, daylight: float) -> float:
@@ -176,6 +220,7 @@ def open_k_blockers(*, mode: str | None, daylight: float | None, any_lamp_on: bo
 
 def summary_message(result: CalibrationResult) -> str:
     lines = [f"background {result.bg0} lx"]
+    lines += [f"WARNING: {w}" for w in result.warnings]
     for k, f in result.fits.items():
         w = f"  ({'; '.join(f.warnings)})" if f.warnings else ""
         lines.append(f"{k}: k={f.k_fit} (lux {f.lux[0]}/{f.lux[1]}/{f.lux[2]}, base {round(f.base, 1)}){w}")

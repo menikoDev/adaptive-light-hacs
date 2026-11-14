@@ -117,4 +117,5 @@ class CalibrationSensor(AdaptiveEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         c = self.mgr.state.candidates.get(self._zone) or {}
-        return {"candidates": {k: v for k, v in c.items() if k != "_ts"}, "zone": self._zone}
+        return {"candidates": {k: v for k, v in c.items() if k != "_ts"}, "zone": self._zone,
+                "warnings": self.mgr.calibration_warnings.get(self._zone, [])}
