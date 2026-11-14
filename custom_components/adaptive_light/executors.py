@@ -13,6 +13,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence, Union
 
+from .model import ZONE_PRESENCE
+
 
 
 # ------------------------------------------------------------------ steps
@@ -337,6 +339,89 @@ def fridge_end(c: Ctx, ctx0: dict) -> list[Step]:
     if ctx0["was_on"] and not ctx0["white"]:
         return [MarkOwn(), Restore("fridge_before", 3)]
     return [MarkOwn(), off([c.bind.fridge], transition=3)]
+
+
+# --------------------------------------------------------------- detection rules
+
+def presence_occupied(states: Mapping[str, str | None]) -> bool:
+    """A zone is occupied when any of its presence sensors is on. No sensors means empty."""
+    return any(v == "on" for v in states.values())
+
+
+def detect_on_steps(lamps: Sequence[str], auto: Mapping[str, bool], brightness: str,
+                    brightness_pct: int | None = None, color_temp_kelvin: int | None = None) -> list[Step]:
+    """Turn the managed lamps on. Adaptive sets no brightness: the controller does, and only because they are now on."""
+    keys = managed(lamps, auto)
+    if not keys:
+        return []
+    if brightness == "adaptive":
+        return [MarkOwn(), on(keys)]
+    data: dict = {"brightness_pct": int(brightness_pct)}
+    if color_temp_kelvin not in (None, ""):
+        data["color_temp_kelvin"] = int(color_temp_kelvin)
+    return [MarkOwn(), on(keys, **data)]
+
+
+def detect_off_steps(lamps: Sequence[str], auto: Mapping[str, bool], off_delay_s: int) -> list[Step]:
+    """Turn the managed lamps off after the sensor has been clear for ``off_delay_s``. 0 means do not auto-off."""
+    if int(off_delay_s) <= 0:
+        return []
+    keys = managed(lamps, auto)
+    return [MarkOwn(), off(keys)] if keys else []
+
+
+def is_fridge_recipe(rule: Mapping, fridge_entity: str | None) -> bool:
+    """A detection rule that should run fridge_start/fridge_end: the fridge sensor, one or more lamps, fixed 30% / 4500 K / 10 s.
+
+    Room presence is not this. A different brightness or delay on the fridge sensor stays a generic rule."""
+    if not fridge_entity or rule.get("sensor") != fridge_entity or not rule.get("lamps"):
+        return False
+    if rule.get("brightness") != "fixed":
+        return False
+    try:
+        pct = int(rule.get("brightness_pct"))
+        kelvin = int(rule.get("color_temp_kelvin"))
+        delay = int(rule.get("off_delay_s"))
+    except (TypeError, ValueError):
+        return False
+    return pct == FRIDGE_PCT and kelvin == FRIDGE_KELVIN and delay == FRIDGE_LEAVE_S
+
+
+def fridge_rules_own_the_trigger(rules, fridge_entity: str | None) -> bool:
+    """When such a rule exists it drives the fridge executor. The hidden fridge_lamp binding does not also fire."""
+    return any(is_fridge_recipe(r, fridge_entity) for r in rules or [])
+
+
+@dataclass(frozen=True)
+class DetectWatch:
+    """What one detection rule (or the fridge recipe group) listens to."""
+
+    kind: str                       # "fridge" | "onoff"
+    entities: tuple[str, ...]       # the fridge sensor, one binary sensor, or every presence sensor
+    zone_presence: bool             # entities are combined with OR
+    rule_ids: tuple[str, ...]
+    for_on: float                   # seconds the trigger must stay on before the lamps turn on
+    off_delay_s: int
+
+
+def plan_detect(rules, *, fridge_entity: str | None, presence_entities) -> list[DetectWatch]:
+    """Subscriptions for the detection rules. A fridge recipe watches the fridge sensor, never the room presence."""
+    rules = list(rules or [])
+    fridge_ids = tuple(r["id"] for r in rules if is_fridge_recipe(r, fridge_entity))
+    out: list[DetectWatch] = []
+    if fridge_ids and fridge_entity:
+        out.append(DetectWatch("fridge", (fridge_entity,), False, fridge_ids, 2.0, FRIDGE_LEAVE_S))
+    presence = tuple(presence_entities or ())
+    for rule in rules:
+        if rule.get("id") in fridge_ids:
+            continue
+        delay = int(rule.get("off_delay_s") or 0)
+        sensor = rule.get("sensor")
+        if sensor == ZONE_PRESENCE:
+            out.append(DetectWatch("onoff", presence, True, (rule["id"],), 0.0, delay))
+        elif sensor:
+            out.append(DetectWatch("onoff", (sensor,), False, (rule["id"],), 0.0, delay))
+    return out
 
 
 # ------------------------------------------------------------------ 5.8-5.10 off automations

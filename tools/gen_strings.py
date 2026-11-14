@@ -47,7 +47,7 @@ ROLE = {
     "radiation": ("Outdoor radiation sensor", "Датчик уличной радиации"),
     "elevation": ("Sun elevation sensor (daylight source)", "Высота солнца (источник дневного света)"),
     "illuminance": ("Illuminance sensor", "Датчик освещённости"),
-    "presence": ("Presence sensor", "Датчик присутствия"),
+    "presence": ("Presence sensors", "Датчики присутствия"),
     "media": ("TV / monitors (calibration warning)", "ТВ / мониторы (предупреждение при калибровке)"),
     "sofa": ("Sofa sensor", "Датчик дивана"), "table": ("Table sensor", "Датчик стола"),
     "fridge": ("Fridge zone sensor", "Датчик зоны холодильника"), "entrance": ("Entrance sensor", "Датчик входа"),
@@ -72,6 +72,11 @@ ERR = {
     "zone_needs_name": ("Enter a zone name", "Введите название зоны"),
     "bad_binding": ("Invalid behaviour binding", "Некорректная привязка поведения"), "no_zones": ("Add at least one zone", "Добавьте хотя бы одну зону"),
     "group_needs_lamps": ("Pick at least one lamp", "Выберите хотя бы одну лампу"),
+    "bad_detect_rule": ("Invalid detection rule", "Некорректное правило по детекции"),
+    "detect_needs_lamps": ("Pick at least one lamp of this zone", "Выберите хотя бы одну лампу этой зоны"),
+    "detect_needs_sensor": ("Pick the zone presence or one binary sensor", "Выберите присутствие зоны или один бинарный датчик"),
+    "detect_needs_brightness": ("Pick adaptive, or a fixed brightness", "Выберите адаптивную яркость или укажите фиксированную"),
+    "detect_no_fridge_sensor": ("Add the fridge sensor first (extra sensors)", "Сначала укажите датчик холодильника (доп. датчики)"),
 }
 UI = {  # key: (en, ru)
     "title": ("Adaptive Light", "Адаптивный свет"),
@@ -85,8 +90,8 @@ UI = {  # key: (en, ru)
                  "Зона — это комната. Выберите одну из областей (Areas) Home Assistant: название, ключ, лампы и датчики подставятся сами. Или оставьте поле пустым для своей зоны."),
     "zone_name": ("Name of the zone", "Название зоны", "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
                   "Область: {area}. Название видно в Home Assistant, его можно изменить. Ключ — короткий латинский id для сущностей и настроек; пустой = получить из названия."),
-    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
-                     "Все необязательные. Без датчика освещённости зона считает свет по дневному свету и не калибруется. Датчики из области подставлены. Присутствие и ТВ / мониторы калибровку не блокируют, а только дают предупреждение: люди, работающий ТВ и дневной свет искажают результат. Пока идёт калибровка, не включайте и не выключайте лампы и не меняйте их вручную."),
+    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Several presence sensors are allowed: the zone is occupied if any of them is on. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
+                     "Все необязательные. Без датчика освещённости зона считает свет по дневному свету и не калибруется. Датчики из области подставлены. Датчиков присутствия может быть несколько: зона занята, если включён любой из них. Присутствие и ТВ / мониторы калибровку не блокируют, а только дают предупреждение: люди, работающий ТВ и дневной свет искажают результат. Пока идёт калибровка, не включайте и не выключайте лампы и не меняйте их вручную."),
     "zone_extra_sensors": ("Extra sensors of {zone}", "Дополнительные датчики {zone}", "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
                            "Только для сценариев поведения (холодильник, диван, окна ...). Оставьте пустым, если не нужно."),
     "zone_lamps": ("Lamps of {zone}", "Лампы зоны {zone}", "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
@@ -96,7 +101,17 @@ UI = {  # key: (en, ru)
     "group_edit": ("Group {group}", "Группа {group}", "", ""),
     "params": ("Parameters ({level}: {target})", "Параметры ({level}: {target})", "Empty field = inherit from the level above (global, zone, group, lamp).",
                "Пустое поле = наследовать от уровня выше (глобально, зона, группа, лампа)."),
-    "zone_bindings": ("Behaviour of {zone}", "Поведение зоны {zone}", "Which groups and lamps the scenarios use. Empty = scenario off.", "Какие группы и лампы использовать в сценариях. Пусто = сценарий выключен."),
+    "zone_bindings": ("Behaviour of {zone}", "Поведение зоны {zone}", "Which groups and lamps the scenarios use. Choose Off to remove a binding. An empty field means the same: that scenario is off.",
+                      "Какие группы и лампы использовать в сценариях. «Выкл» снимает привязку. Пустое поле значит то же самое: сценарий выключен."),
+    "zone_detect": ("On detection in {zone}", "По детекции: {zone}",
+                    "Rules turn lamps on when a sensor trips and, after a delay, off when it clears. An empty list does nothing. The two templates are optional: they only fill the form, nothing is saved until you submit it.\n\n{rules}",
+                    "Правила включают лампы, когда срабатывает датчик, и выключают их через заданную задержку после того, как датчик погас. Пустой список ничего не делает. Два шаблона необязательны: они только заполняют форму, пока вы её не сохраните, ничего не записывается.\n\n{rules}"),
+    "detect_add": ("Detection rule in {zone}", "Правило по детекции в {zone}",
+                   "The trigger is one binary sensor, or the combined zone presence (on if any presence sensor of the zone is on). The second field, if you fill it, replaces the list. Adaptive turns the lamps on and leaves the brightness to the controller, which still only adjusts lamps that are already on. Fixed sets a brightness and, if you fill it in, a colour temperature. Off delay 0 means the rule does not turn the lamps off. A rule on the fridge sensor at 30%, 4500 K and 10 s runs the fridge scenario (snapshot, then restore or off) instead of a plain on/off. Each lamp's auto switch still decides whether automation may touch it.",
+                   "Триггер — один бинарный датчик или общее присутствие зоны (зона занята, если включён любой её датчик присутствия). Второе поле, если его заполнить, заменяет выбор в списке. «Адаптивная» включает лампы и отдаёт яркость контроллеру: он по-прежнему меняет только уже включённые лампы. «Фиксированная» задаёт яркость и, если указать, цветовую температуру. Задержка 0 значит, что правило само лампы не выключает. Правило на датчике холодильника с 30%, 4500 K и 10 с запускает сценарий холодильника (снимок, потом возврат или выключение), а не простое включение. Переключатель auto лампы по-прежнему решает, может ли автоматика её трогать."),
+    "detect_delete": ("Delete a detection rule in {zone}", "Удалить правило по детекции в {zone}",
+                      "The chosen rule is removed. The others stay.",
+                      "Выбранное правило будет удалено. Остальные останутся."),
     "pick_zone": ("Pick a zone", "Выберите зону", "", ""), "pick_lamp": ("Pick a lamp", "Выберите лампу", "", ""), "pick_group": ("Pick a group", "Выберите группу", "", ""),
     "zone_remove": ("Remove {zone}?", "Удалить {zone}?", "Its lamps, groups and sensors are removed from the configuration.", "Лампы, группы и датчики зоны будут удалены из конфигурации."),
     "lamp_remove": ("Remove {lamp}?", "Удалить {lamp}?", "", ""), "group_remove": ("Remove {group}?", "Удалить {group}?", "", ""),
@@ -106,20 +121,40 @@ MENU = {  # step: {option: (en, ru)}
     "user": {"global_sensors": ("Step-by-step wizard", "Пошаговый мастер"), "preset_plan": ("Preset: living room of the YAML plan", "Пресет: гостиная из YAML-плана"),
              "resume_draft": ("Continue the unfinished setup", "Продолжить незавершённую настройку"),
              "discard_draft": ("Discard the unfinished setup", "Удалить незавершённую настройку")},
-    "groups_menu": {"group_add": ("Add a lamp group", "Добавить группу ламп"), "more_zones": ("Continue", "Дальше")},
+    "groups_menu": {"group_add": ("Add a lamp group", "Добавить группу ламп"),
+                    "zone_detect": ("On detection", "По детекции"), "more_zones": ("Continue", "Дальше")},
     "more_zones": {"zone": ("Add another zone", "Добавить ещё зону"), "save": ("Finish", "Готово")},
     "init": {"global_sensors": ("Outdoor sensors", "Уличные датчики"), "global_params": ("Global parameters", "Глобальные параметры"),
              "pick_zone": ("Edit a zone", "Изменить зону"), "new_zone": ("Add a zone", "Добавить зону"), "pick_lamp": ("Edit a lamp", "Изменить лампу"),
              "pick_group": ("Edit a group", "Изменить группу"), "save": ("Save and apply", "Сохранить и применить")},
     "zone_menu": {"zone_sensors": ("Sensors", "Датчики"), "zone_extra_sensors": ("Extra sensors", "Доп. датчики"), "zone_lamps": ("Add lamps", "Добавить лампы"),
                   "group_add": ("Add a group", "Добавить группу"), "zone_params": ("Zone parameters", "Параметры зоны"),
-                  "zone_bindings": ("Behaviour scenarios", "Сценарии поведения"), "zone_remove": ("Remove zone", "Удалить зону"), "init": ("Back", "Назад")},
+                  "zone_bindings": ("Behaviour scenarios", "Сценарии поведения"),
+                  "zone_detect": ("On detection", "По детекции"),
+                  "zone_remove": ("Remove zone", "Удалить зону"), "init": ("Back", "Назад")},
+    "zone_detect": {
+        "detect_add": ("Add a rule", "Добавить правило"),
+        "detect_tpl_room": ("Template: room presence → main group, adaptive, off 10 min after leave",
+                            "Шаблон: присутствие комнаты → основная группа, адаптивно, выкл через 10 мин"),
+        "detect_tpl_fridge": ("Template: fridge sensor → one lamp, fixed 30% at 4500 K, off after 10 s",
+                              "Шаблон: датчик холодильника → одна лампа, 30% и 4500 K, выкл через 10 с"),
+        "detect_delete": ("Delete a rule", "Удалить правило"),
+        "zone_menu": ("Back", "Назад"),
+        "groups_menu": ("Back", "Назад"),
+    },
     "lamp_menu": {"lamp_params": ("Lamp parameters", "Параметры лампы"), "lamp_remove": ("Remove lamp", "Удалить лампу"), "init": ("Back", "Назад")},
     "group_menu": {"group_edit": ("Name and lamps", "Название и лампы"), "group_params": ("Group parameters", "Параметры группы"),
                    "group_remove": ("Remove group", "Удалить группу"), "init": ("Back", "Назад")},
 }
 FIELD = {"name": ("Name", "Название"), "area": ("Area (optional)", "Область (необязательно)"), "key": ("Zone key (optional)", "Ключ зоны (необязательно)"), "lamps": ("Lamps", "Лампы"), "share_pause": ("Manual change pauses the whole group", "Ручное изменение ставит на паузу всю группу"),
-         "zone": ("Zone", "Зона"), "lamp": ("Lamp", "Лампа"), "group": ("Group", "Группа")}
+         "zone": ("Zone", "Зона"), "lamp": ("Lamp", "Лампа"), "group": ("Group", "Группа"),
+         "sensor": ("Trigger", "Триггер"),
+         "sensor_entity": ("Or one binary sensor (replaces the list)", "Или один бинарный датчик (заменяет список)"),
+         "brightness": ("Brightness", "Яркость"),
+         "brightness_pct": ("Fixed brightness, % (fixed mode only)", "Фиксированная яркость, % (только для фиксированной)"),
+         "color_temp_kelvin": ("Colour temperature, K (optional, fixed mode)", "Цветовая температура, K (необязательно, фиксированная)"),
+         "off_delay_s": ("Off delay, seconds (0 = do not turn off)", "Задержка выключения, секунды (0 = не выключать)"),
+         "rule": ("Rule", "Правило")}
 CALIB_DESC = (
     "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores "
     "candidates; nothing is applied until calibrate_apply. A lamp whose test levels raise the illuminance by less than 1 lx "
@@ -182,6 +217,9 @@ def build(i: int) -> dict:
     data["zone_lamps"]["lamps"] = FIELD["lamps"][i]
     for sid, f in (("pick_zone", "zone"), ("pick_lamp", "lamp"), ("pick_group", "group")):
         data[sid][f] = FIELD[f][i]
+    for f in ("sensor", "sensor_entity", "lamps", "brightness", "brightness_pct", "color_temp_kelvin", "off_delay_s"):
+        data["detect_add"][f] = FIELD[f][i]
+    data["detect_delete"]["rule"] = FIELD["rule"][i]
     for sid in steps:
         if data[sid]:
             steps[sid]["data"] = data[sid]
@@ -195,7 +233,13 @@ def build(i: int) -> dict:
     out = {"title": UI["title"][i], "config": {"step": steps, "error": err,
            "abort": {"single_instance_allowed": "Already configured." if i == 0 else "Уже настроено."}},
            "options": {"step": steps, "error": err},
-           "selector": {"yes_no": {"options": {"yes": "Yes" if i == 0 else "Да", "no": "No" if i == 0 else "Нет"}}},
+           "selector": {
+               "yes_no": {"options": {"yes": "Yes" if i == 0 else "Да", "no": "No" if i == 0 else "Нет"}},
+               "detect_brightness": {"options": {
+                   "adaptive": "Adaptive (the controller sets the brightness)" if i == 0 else "Адаптивная (яркость задаёт контроллер)",
+                   "fixed": "Fixed" if i == 0 else "Фиксированная",
+               }},
+           },
            "services": {n: {"name": v[i], "description": v[i]} for n, v in SERV.items()}}
     out["services"]["calibrate"]["description"] = CALIB_DESC[i]
     out["services"]["calibrate_apply"]["description"] = APPLY_DESC[i]

@@ -37,13 +37,13 @@ class ZoneCalibrationIO:
             except (AttributeError, ValueError, TypeError):
                 elevation = None
         mode_ent = self.mgr._zone_p[self.zone]["mode_entity"]
-        pres = self.cfg.sensor("presence", self.zone)
-        pst = s.get(pres) if pres else None
+        pres_ents = self.cfg.sensors("presence", self.zone)
+        presence_on = any((pst := s.get(e)) is not None and pst.state == "on" for e in pres_ents)
         media = [m for m in self.cfg.sensors("media", self.zone) if s.get(m) is not None and s.get(m).state in MEDIA_ACTIVE]
         return calibration.condition_warnings(
             has_elevation=bool(elev), elevation=elevation, has_mode=bool(mode_ent),
             mode=self.mgr.zone_mode(self.zone) if mode_ent else None,
-            presence_on=bool(pres) and (pst is None or pst.state != "off"), active_media=media)
+            presence_on=presence_on, active_media=media)
 
     async def snapshot(self) -> None:
         for k in self.cfg.lamps_in_zone(self.zone):
@@ -82,9 +82,9 @@ class ZoneCalibrationIO:
         return self.mgr.zone_lux(self.zone)
 
     async def presence_on(self) -> bool:
-        pres = self.cfg.sensor("presence", self.zone)
-        st = self.hass.states.get(pres) if pres else None
-        return st is not None and st.state == "on"
+        return any(
+            (st := self.hass.states.get(e)) is not None and st.state == "on"
+            for e in self.cfg.sensors("presence", self.zone))
 
     async def sleep(self, seconds: float) -> None:
         await self.mgr.sleep(seconds)

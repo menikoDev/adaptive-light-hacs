@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from typing import Any, Awaitable, Callable
 
 from . import executors as ex
@@ -78,6 +79,8 @@ class ExecutorRuntime:
         return st.state if st is not None else default
 
     def _on(self, zone: str, role: str) -> bool:
+        if role == "presence":
+            return ex.presence_occupied({e: self._s(e) for e in self.mgr.cfg.sensors("presence", zone)})
         return self._s(self.mgr.cfg.sensor(role, zone)) == "on"
 
     def tv_on(self, zone: str) -> bool:
@@ -123,20 +126,54 @@ class ExecutorRuntime:
         if c.bind.desk:
             await self.runner.run(zone, ex.scene_apply(c))
 
-    async def do_fridge(self, zone: str) -> None:
+    async def do_fridge(self, zone: str, lamps: list[str] | None = None) -> None:
+        """Fridge scenario for the binding's lamp, or for the lamps of a detection rule that picked the fridge sensor."""
         m = self.mgr
-        c = self.ctx(zone)
-        if not ex.fridge_allowed(c):
+        if lamps is None:
+            bound = self.ctx(zone).bind.fridge
+            lamps = [bound] if bound else []
+        started: list[tuple[str, dict]] = []
+        for lamp in lamps:
+            c = self.ctx(zone)
+            c.bind = replace(c.bind, fridge=lamp)
+            if not ex.fridge_allowed(c):
+                continue
+            ctx0 = ex.fridge_context(c)
+            await self.runner.run(zone, ex.fridge_start(c))
+            started.append((lamp, ctx0))
+        if not started:
             return
-        ctx0 = ex.fridge_context(c)
-        await self.runner.run(zone, ex.fridge_start(c))
         fz = m.cfg.sensor("fridge", zone)
         for _ in range(ex.FRIDGE_WAIT_MAX_S):
-            st = m.hass.states.get(fz)
+            st = m.hass.states.get(fz) if fz else None
             if st is not None and st.state == "off" and (m._now() - st.last_changed).total_seconds() >= ex.FRIDGE_LEAVE_S:
                 break
             await m.sleep(1)
-        await self.runner.run(zone, ex.fridge_end(self.ctx(zone), ctx0))
+        for lamp, ctx0 in started:
+            c = self.ctx(zone)
+            c.bind = replace(c.bind, fridge=lamp)
+            await self.runner.run(zone, ex.fridge_end(c, ctx0))
+
+    def _rule(self, zone: str, rid: str) -> dict | None:
+        for rule in self.mgr.cfg.zones[zone].get("detect_rules") or []:
+            if rule.get("id") == rid:
+                return rule
+        return None
+
+    async def do_detect_on(self, zone: str, rid: str) -> None:
+        rule = self._rule(zone, rid)
+        if not rule:
+            return
+        c = self.ctx(zone)
+        await self.runner.run(zone, ex.detect_on_steps(
+            rule["lamps"], c.auto, rule["brightness"], rule.get("brightness_pct"), rule.get("color_temp_kelvin")))
+
+    async def do_detect_off(self, zone: str, rid: str) -> None:
+        rule = self._rule(zone, rid)
+        if not rule:
+            return
+        c = self.ctx(zone)
+        await self.runner.run(zone, ex.detect_off_steps(rule["lamps"], c.auto, int(rule.get("off_delay_s") or 0)))
 
     async def do_night_off(self, zone: str, trigger: str) -> None:
         c = self.ctx(zone)
@@ -270,10 +307,69 @@ class ExecutorRuntime:
         self._unsub.append(async_track_state_change_event(self.mgr.hass, [ent], handler))
         self._unsub.append(cancel)
 
+    def _watch_or(self, ents: list[str], cb: Callable[[Any, Any], None], *, frm=None, to=None, for_s: float = 0.0) -> None:
+        """Like ``_watch``, but the state is the OR of several binary sensors (zone presence).
+
+        ``for:`` is measured on that combined state: it starts when the zone becomes occupied or empty,
+        and it is cancelled if any sensor flips the combined state back."""
+        ents = [e for e in ents if e]
+        if not ents:
+            return
+        from homeassistant.core import callback
+        from homeassistant.helpers.event import async_call_later, async_track_state_change_event
+
+        timer: list[Callable[[], None] | None] = [None]
+
+        def cancel():
+            if timer[0]:
+                timer[0]()
+                timer[0] = None
+
+        def combined(override_ent=None, override_state=None) -> str:
+            states = {}
+            for e in ents:
+                if e == override_ent:
+                    states[e] = override_state
+                else:
+                    states[e] = self._s(e)
+            return "on" if ex.presence_occupied(states) else "off"
+
+        @callback
+        def handler(event):
+            old, new = event.data.get("old_state"), event.data.get("new_state")
+            if old is None or new is None or old.state == new.state:
+                return
+            ent = event.data.get("entity_id")
+            old_agg, new_agg = combined(ent, old.state), combined(ent, new.state)
+            if for_s and timer[0] and new_agg != to:
+                cancel()
+            if old_agg == new_agg:
+                return
+            ok_to = to is None or new_agg == to
+            ok_from = frm is None or old_agg == frm
+            if not (ok_to and ok_from):
+                return
+            if for_s:
+                cancel()
+
+                @callback
+                def fire(_now):
+                    timer[0] = None
+                    if combined() == (to if to is not None else new_agg):
+                        cb(old, new)
+
+                timer[0] = async_call_later(self.mgr.hass, for_s, fire)
+            else:
+                cb(old, new)
+
+        self._unsub.append(async_track_state_change_event(self.mgr.hass, ents, handler))
+        self._unsub.append(cancel)
+
     def start(self) -> None:
         cfg = self.mgr.cfg
         for zone in cfg.zone_order:
-            if cfg.zones[zone].get("bindings"):
+            z = cfg.zones[zone]
+            if z.get("bindings") or z.get("detect_rules"):
                 self._start_zone(zone)
 
     def _start_zone(self, zone: str) -> None:
@@ -294,7 +390,7 @@ class ExecutorRuntime:
                         zone, tid, _f(o), _f(n)), "single"))
         if has("top_group"):
             ev = lambda o, n: L("evening", zone, lambda: self.do_evening(zone), "single")
-            self._watch(S("presence"), ev, frm="off", to="on")
+            self._watch_or(cfg.sensors("presence", zone), ev, frm="off", to="on")
             self._watch(S("illuminance"), ev, for_s=120, numeric=("below", 25))
             self._watch(mode_e, ev, to="Evening")
         if has("desk_group"):
@@ -304,14 +400,15 @@ class ExecutorRuntime:
             self._watch(scene_e, lambda o, n: L("scene", zone, lambda: self.do_scene(zone), "restart"))
             self._watch(S("table"), lambda o, n: L("desk_off", zone, lambda: self.do_desk_off(zone), "restart"), frm="on", to="off", for_s=60)
             self._watch(mode_e, lambda o, n: L("desk_off", zone, lambda: self.do_desk_off(zone), "restart"), to="Away")
-        if has("fridge_lamp"):
+        self._arm_detect(zone, L)
+        if has("fridge_lamp") and not ex.fridge_rules_own_the_trigger(cfg.zones[zone].get("detect_rules"), S("fridge")):
             self._watch(S("fridge"), lambda o, n: L("fridge", zone, lambda: self.do_fridge(zone), "single"), frm="off", to="on", for_s=2)
         if has("top_group") or has("desk_group"):
             self._watch(mode_e, lambda o, n: L("night_off", zone, lambda: self.do_night_off(zone, "night_start"), "restart"), to="Night", for_s=600)
             self._watch(S("sofa"), lambda o, n: L("night_off", zone, lambda: self.do_night_off(zone, "sofa_asleep"), "restart"), to="on", for_s=1200)
         if has("top_group"):
             to_ = lambda o, n: L("top_off", zone, lambda: self.do_top_off(zone), "restart")
-            self._watch(S("presence"), to_, frm="on", to="off", for_s=600)
+            self._watch_or(cfg.sensors("presence", zone), to_, frm="on", to="off", for_s=600)
             for tv in cfg.sensors("media", zone):
                 self._watch(tv, to_, to=["off", "standby"], for_s=600)
             self._watch(mode_e, to_, to="Away")
@@ -324,9 +421,41 @@ class ExecutorRuntime:
             self._watch_time(15, 0, lambda: L("green", zone, lambda: self.do_green(zone, "end"), "restart"))
         if has("wake_group"):
             w = lambda tid: (lambda o, n: L("wake", zone, lambda: self.do_wake(zone, tid), "restart"))
-            self._watch(S("presence"), w("motion"), frm="off", to="on", for_s=5)
+            self._watch_or(cfg.sensors("presence", zone), w("motion"), frm="off", to="on", for_s=5)
             self._watch(S("sofa"), w("left_sofa"), frm="on", to="off")
-            self._watch(S("presence"), w("quiet"), frm="on", to="off", for_s=180)
+            self._watch_or(cfg.sensors("presence", zone), w("quiet"), frm="on", to="off", for_s=180)
+
+    def _arm_detect(self, zone: str, launch) -> None:
+        cfg = self.mgr.cfg
+        rules = cfg.zones[zone].get("detect_rules") or []
+        fridge = cfg.sensor("fridge", zone)
+        for watch in ex.plan_detect(rules, fridge_entity=fridge, presence_entities=cfg.sensors("presence", zone)):
+            if watch.kind == "fridge":
+                lamps: list[str] = []
+                for rule in rules:
+                    if rule.get("id") in watch.rule_ids:
+                        for key in rule.get("lamps") or []:
+                            if key not in lamps:
+                                lamps.append(key)
+                self._watch(watch.entities[0], lambda o, n, lamps=lamps: launch(
+                    "fridge", zone, lambda: self.do_fridge(zone, lamps), "single"), frm="off", to="on", for_s=watch.for_on)
+                continue
+            rid = watch.rule_ids[0]
+
+            def on_cb(o, n, rid=rid):
+                launch(f"detect_on_{rid}", zone, lambda: self.do_detect_on(zone, rid), "restart")
+
+            def off_cb(o, n, rid=rid):
+                launch(f"detect_off_{rid}", zone, lambda: self.do_detect_off(zone, rid), "restart")
+
+            if watch.zone_presence:
+                self._watch_or(list(watch.entities), on_cb, frm="off", to="on")
+                if watch.off_delay_s > 0:
+                    self._watch_or(list(watch.entities), off_cb, frm="on", to="off", for_s=watch.off_delay_s)
+            else:
+                self._watch(watch.entities[0], on_cb, frm="off", to="on", for_s=watch.for_on)
+                if watch.off_delay_s > 0:
+                    self._watch(watch.entities[0], off_cb, frm="on", to="off", for_s=watch.off_delay_s)
 
     def _watch_value(self, ent: str, cb) -> None:
         """Any state change of a numeric sensor (window open percentage)."""

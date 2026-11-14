@@ -7,8 +7,10 @@ the runtime reads it through ``Config``.
       "version": 2,
       "params":  {name: value},                                  # global overrides
       "sensors": [{"entity", "role", "zone"}],                   # zone "" = global (radiation, elevation)
-      "zones":   [{"key", "name", "params", "bindings", "area_id"?}],  # one per room, the first is the primary one;
-                                                                 # area_id = Home Assistant Area it was created from
+      "zones":   [{"key", "name", "params", "bindings", "detect_rules"?, "area_id"?}],
+                                                                 # one per room, the first is the primary one;
+                                                                 # area_id = Home Assistant Area it was created from;
+                                                                 # detect_rules turn lamps on from a sensor and off after a delay
       "lamps":   [{"key", "entity", "zone", "name", "params"}],  # any number
       "groups":  [{"key", "name", "zone", "lamps": [keys], "params", "share_pause"}]
     }
@@ -40,6 +42,9 @@ BINDING_SLOTS = {            # slot -> kind of key it takes
     "top_group": "group", "desk_group": "group", "wake_group": "group",
     "fridge_lamp": "lamp", "vent_left": "lamp", "vent_right": "lamp", "green_lamp": "lamp",
 }
+BINDING_OFF = "__off__"       # explicit "scenario off" in the bindings form; never stored (empty means the same)
+ZONE_PRESENCE = "zone_presence"  # detection-rule trigger: the OR of the zone's presence sensors
+DETECT_BRIGHTNESS = ("adaptive", "fixed")
 
 
 def empty_config() -> dict:
@@ -112,9 +117,79 @@ def validate(cfg: dict) -> list[ConfigError]:
                 errs.append(ConfigError("bad_binding", f"{slot} -> {key}"))
             elif key and kind == "lamp" and lamp_zone.get(key) != z["key"]:
                 errs.append(ConfigError("bad_binding", f"{slot} -> {key}"))
+        seen_rules: set[str] = set()
+        for rule in z.get("detect_rules") or []:
+            if not isinstance(rule, dict):
+                errs.append(ConfigError("bad_detect_rule", "not an object"))
+                continue
+            rid = str(rule.get("id") or "")
+            if not KEY_RE.match(rid) or rid in seen_rules:
+                errs.append(ConfigError("bad_detect_rule", f"id {rid!r}"))
+            seen_rules.add(rid)
+            sensor = rule.get("sensor")
+            if sensor != ZONE_PRESENCE and not str(sensor or "").startswith("binary_sensor."):
+                errs.append(ConfigError("bad_detect_rule", f"sensor {sensor!r}"))
+            lamps = list(rule.get("lamps") or [])
+            if not lamps:
+                errs.append(ConfigError("bad_detect_rule", "no lamps"))
+            for lk in lamps:
+                if lamp_zone.get(lk) != z["key"]:
+                    errs.append(ConfigError("bad_detect_rule", f"lamp {lk}"))
+            if rule.get("brightness") not in DETECT_BRIGHTNESS:
+                errs.append(ConfigError("bad_detect_rule", "brightness"))
+            elif rule.get("brightness") == "fixed":
+                pct = rule.get("brightness_pct")
+                if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 1 <= int(pct) <= 100:
+                    errs.append(ConfigError("bad_detect_rule", "brightness_pct"))
+            delay = rule.get("off_delay_s", 0)
+            if isinstance(delay, bool) or not isinstance(delay, (int, float)) or int(delay) < 0:
+                errs.append(ConfigError("bad_detect_rule", "off_delay_s"))
+            kelvin = rule.get("color_temp_kelvin")
+            if kelvin not in (None, "") and (isinstance(kelvin, bool) or not isinstance(kelvin, (int, float))
+                                              or not 1000 <= int(kelvin) <= 20000):
+                errs.append(ConfigError("bad_detect_rule", "color_temp_kelvin"))
     if not cfg.get("zones"):
         errs.append(ConfigError("no_zones"))
     return errs
+
+
+def _clean_detect_rules(rules, zone_lamps: set[str]) -> list[dict]:
+    """Drop rules that cannot run. Lamps that left the zone are removed; a rule with none left is dropped."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            continue
+        rid = str(rule.get("id") or "")
+        if not KEY_RE.match(rid) or rid in seen:
+            continue
+        lamps = [k for k in dict.fromkeys(rule.get("lamps") or []) if k in zone_lamps]
+        sensor, brightness = rule.get("sensor"), rule.get("brightness")
+        if not lamps or brightness not in DETECT_BRIGHTNESS:
+            continue
+        if sensor != ZONE_PRESENCE and not str(sensor or "").startswith("binary_sensor."):
+            continue
+        try:
+            delay = int(rule.get("off_delay_s") or 0)
+        except (TypeError, ValueError):
+            continue
+        if delay < 0:
+            continue
+        item: dict = {"id": rid, "sensor": sensor, "lamps": lamps, "brightness": brightness, "off_delay_s": delay}
+        if brightness == "fixed":
+            try:
+                pct = int(rule["brightness_pct"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            item["brightness_pct"] = pct
+            if rule.get("color_temp_kelvin") not in (None, ""):
+                try:
+                    item["color_temp_kelvin"] = int(rule["color_temp_kelvin"])
+                except (TypeError, ValueError):
+                    continue
+        seen.add(rid)
+        out.append(item)
+    return out
 
 
 def normalise(cfg: dict) -> dict:
@@ -127,7 +202,12 @@ def normalise(cfg: dict) -> dict:
     for z in c["zones"]:
         z["params"] = P.clean_overrides(z.get("params", {}), P.Z)
         z["name"] = z.get("name") or z["key"]
-        z["bindings"] = {k: v for k, v in (z.get("bindings") or {}).items() if v}
+        z["bindings"] = {k: v for k, v in (z.get("bindings") or {}).items() if v and v != BINDING_OFF}
+        rules = _clean_detect_rules(z.get("detect_rules"), {x["key"] for x in c["lamps"] if x.get("zone") == z.get("key")})
+        if rules:
+            z["detect_rules"] = rules
+        else:
+            z.pop("detect_rules", None)
     for x in c["lamps"]:
         x["params"] = P.clean_overrides(x.get("params", {}), P.L)
         x["name"] = x.get("name") or x["key"]
@@ -214,6 +294,9 @@ class Config:
 
     def binding(self, zone: str, slot: str) -> str | None:
         return self.zones[zone].get("bindings", {}).get(slot) or None
+
+    def detect_rules(self, zone: str) -> list[dict]:
+        return list(self.zones[zone].get("detect_rules") or [])
 
     def group_lamps(self, group_key: str) -> list[str]:
         return list(self.groups[group_key]["lamps"])

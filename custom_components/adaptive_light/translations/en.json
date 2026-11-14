@@ -19,7 +19,7 @@
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
-          "presence": "Presence sensor",
+          "presence": "Presence sensors",
           "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
@@ -57,12 +57,12 @@
       },
       "zone_sensors": {
         "title": "Sensors of {zone}",
-        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
+        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Several presence sensors are allowed: the zone is occupied if any of them is on. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
         "data": {
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
-          "presence": "Presence sensor",
+          "presence": "Presence sensors",
           "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
@@ -83,7 +83,7 @@
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
-          "presence": "Presence sensor",
+          "presence": "Presence sensors",
           "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
@@ -165,7 +165,7 @@
       },
       "zone_bindings": {
         "title": "Behaviour of {zone}",
-        "description": "Which groups and lamps the scenarios use. Empty = scenario off.",
+        "description": "Which groups and lamps the scenarios use. Choose Off to remove a binding. An empty field means the same: that scenario is off.",
         "data": {
           "top_group": "Top lights group",
           "desk_group": "Desk lights group",
@@ -174,6 +174,38 @@
           "vent_left": "Ventilation blink, left lamp",
           "vent_right": "Ventilation blink, right lamp",
           "green_lamp": "Green fill lamp"
+        }
+      },
+      "zone_detect": {
+        "title": "On detection in {zone}",
+        "description": "Rules turn lamps on when a sensor trips and, after a delay, off when it clears. An empty list does nothing. The two templates are optional: they only fill the form, nothing is saved until you submit it.\n\n{rules}",
+        "menu_options": {
+          "detect_add": "Add a rule",
+          "detect_tpl_room": "Template: room presence → main group, adaptive, off 10 min after leave",
+          "detect_tpl_fridge": "Template: fridge sensor → one lamp, fixed 30% at 4500 K, off after 10 s",
+          "detect_delete": "Delete a rule",
+          "zone_menu": "Back",
+          "groups_menu": "Back"
+        }
+      },
+      "detect_add": {
+        "title": "Detection rule in {zone}",
+        "description": "The trigger is one binary sensor, or the combined zone presence (on if any presence sensor of the zone is on). The second field, if you fill it, replaces the list. Adaptive turns the lamps on and leaves the brightness to the controller, which still only adjusts lamps that are already on. Fixed sets a brightness and, if you fill it in, a colour temperature. Off delay 0 means the rule does not turn the lamps off. A rule on the fridge sensor at 30%, 4500 K and 10 s runs the fridge scenario (snapshot, then restore or off) instead of a plain on/off. Each lamp's auto switch still decides whether automation may touch it.",
+        "data": {
+          "sensor": "Trigger",
+          "sensor_entity": "Or one binary sensor (replaces the list)",
+          "lamps": "Lamps",
+          "brightness": "Brightness",
+          "brightness_pct": "Fixed brightness, % (fixed mode only)",
+          "color_temp_kelvin": "Colour temperature, K (optional, fixed mode)",
+          "off_delay_s": "Off delay, seconds (0 = do not turn off)"
+        }
+      },
+      "detect_delete": {
+        "title": "Delete a detection rule in {zone}",
+        "description": "The chosen rule is removed. The others stay.",
+        "data": {
+          "rule": "Rule"
         }
       },
       "pick_zone": {
@@ -217,6 +249,7 @@
         "title": "Adaptive Light",
         "menu_options": {
           "group_add": "Add a lamp group",
+          "zone_detect": "On detection",
           "more_zones": "Continue"
         }
       },
@@ -248,6 +281,7 @@
           "group_add": "Add a group",
           "zone_params": "Zone parameters",
           "zone_bindings": "Behaviour scenarios",
+          "zone_detect": "On detection",
           "zone_remove": "Remove zone",
           "init": "Back"
         }
@@ -283,7 +317,12 @@
       "zone_needs_name": "Enter a zone name",
       "bad_binding": "Invalid behaviour binding",
       "no_zones": "Add at least one zone",
-      "group_needs_lamps": "Pick at least one lamp"
+      "group_needs_lamps": "Pick at least one lamp",
+      "bad_detect_rule": "Invalid detection rule",
+      "detect_needs_lamps": "Pick at least one lamp of this zone",
+      "detect_needs_sensor": "Pick the zone presence or one binary sensor",
+      "detect_needs_brightness": "Pick adaptive, or a fixed brightness",
+      "detect_no_fridge_sensor": "Add the fridge sensor first (extra sensors)"
     },
     "abort": {
       "single_instance_allowed": "Already configured."
@@ -308,7 +347,7 @@
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
-          "presence": "Presence sensor",
+          "presence": "Presence sensors",
           "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
@@ -346,12 +385,12 @@
       },
       "zone_sensors": {
         "title": "Sensors of {zone}",
-        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
+        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Several presence sensors are allowed: the zone is occupied if any of them is on. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
         "data": {
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
-          "presence": "Presence sensor",
+          "presence": "Presence sensors",
           "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
@@ -372,7 +411,7 @@
           "radiation": "Outdoor radiation sensor",
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
-          "presence": "Presence sensor",
+          "presence": "Presence sensors",
           "media": "TV / monitors (calibration warning)",
           "sofa": "Sofa sensor",
           "table": "Table sensor",
@@ -454,7 +493,7 @@
       },
       "zone_bindings": {
         "title": "Behaviour of {zone}",
-        "description": "Which groups and lamps the scenarios use. Empty = scenario off.",
+        "description": "Which groups and lamps the scenarios use. Choose Off to remove a binding. An empty field means the same: that scenario is off.",
         "data": {
           "top_group": "Top lights group",
           "desk_group": "Desk lights group",
@@ -463,6 +502,38 @@
           "vent_left": "Ventilation blink, left lamp",
           "vent_right": "Ventilation blink, right lamp",
           "green_lamp": "Green fill lamp"
+        }
+      },
+      "zone_detect": {
+        "title": "On detection in {zone}",
+        "description": "Rules turn lamps on when a sensor trips and, after a delay, off when it clears. An empty list does nothing. The two templates are optional: they only fill the form, nothing is saved until you submit it.\n\n{rules}",
+        "menu_options": {
+          "detect_add": "Add a rule",
+          "detect_tpl_room": "Template: room presence → main group, adaptive, off 10 min after leave",
+          "detect_tpl_fridge": "Template: fridge sensor → one lamp, fixed 30% at 4500 K, off after 10 s",
+          "detect_delete": "Delete a rule",
+          "zone_menu": "Back",
+          "groups_menu": "Back"
+        }
+      },
+      "detect_add": {
+        "title": "Detection rule in {zone}",
+        "description": "The trigger is one binary sensor, or the combined zone presence (on if any presence sensor of the zone is on). The second field, if you fill it, replaces the list. Adaptive turns the lamps on and leaves the brightness to the controller, which still only adjusts lamps that are already on. Fixed sets a brightness and, if you fill it in, a colour temperature. Off delay 0 means the rule does not turn the lamps off. A rule on the fridge sensor at 30%, 4500 K and 10 s runs the fridge scenario (snapshot, then restore or off) instead of a plain on/off. Each lamp's auto switch still decides whether automation may touch it.",
+        "data": {
+          "sensor": "Trigger",
+          "sensor_entity": "Or one binary sensor (replaces the list)",
+          "lamps": "Lamps",
+          "brightness": "Brightness",
+          "brightness_pct": "Fixed brightness, % (fixed mode only)",
+          "color_temp_kelvin": "Colour temperature, K (optional, fixed mode)",
+          "off_delay_s": "Off delay, seconds (0 = do not turn off)"
+        }
+      },
+      "detect_delete": {
+        "title": "Delete a detection rule in {zone}",
+        "description": "The chosen rule is removed. The others stay.",
+        "data": {
+          "rule": "Rule"
         }
       },
       "pick_zone": {
@@ -506,6 +577,7 @@
         "title": "Adaptive Light",
         "menu_options": {
           "group_add": "Add a lamp group",
+          "zone_detect": "On detection",
           "more_zones": "Continue"
         }
       },
@@ -537,6 +609,7 @@
           "group_add": "Add a group",
           "zone_params": "Zone parameters",
           "zone_bindings": "Behaviour scenarios",
+          "zone_detect": "On detection",
           "zone_remove": "Remove zone",
           "init": "Back"
         }
@@ -572,7 +645,12 @@
       "zone_needs_name": "Enter a zone name",
       "bad_binding": "Invalid behaviour binding",
       "no_zones": "Add at least one zone",
-      "group_needs_lamps": "Pick at least one lamp"
+      "group_needs_lamps": "Pick at least one lamp",
+      "bad_detect_rule": "Invalid detection rule",
+      "detect_needs_lamps": "Pick at least one lamp of this zone",
+      "detect_needs_sensor": "Pick the zone presence or one binary sensor",
+      "detect_needs_brightness": "Pick adaptive, or a fixed brightness",
+      "detect_no_fridge_sensor": "Add the fridge sensor first (extra sensors)"
     }
   },
   "selector": {
@@ -580,6 +658,12 @@
       "options": {
         "yes": "Yes",
         "no": "No"
+      }
+    },
+    "detect_brightness": {
+      "options": {
+        "adaptive": "Adaptive (the controller sets the brightness)",
+        "fixed": "Fixed"
       }
     }
   },

@@ -15,7 +15,8 @@ from homeassistant.util import slugify
 
 from . import areas, draft as drafts, flow_ops as ops, params as P
 from .const import CONF_CONFIG, DOMAIN
-from .model import BINDING_SLOTS, GLOBAL_ROLES, KEY_RE, ROLE_DOMAINS, empty_config, normalise, plan_living_room, validate
+from .model import (BINDING_OFF, BINDING_SLOTS, GLOBAL_ROLES, KEY_RE, ROLE_DOMAINS, ZONE_PRESENCE, empty_config,
+                    normalise, plan_living_room, validate)
 
 _LOGGER = logging.getLogger(__name__)
 EXTRA_ROLES = ("sofa", "table", "fridge", "entrance", "carpet", "window_advice", "window_left", "window_right",
@@ -77,6 +78,15 @@ class EditorMixin:
     _group: str = ""
     _level: str = "global"
     _target: str = ""
+    _detect_back: str = "zone_menu"
+    _detect_prefill: dict | None = None
+
+    def _ru(self) -> bool:
+        lang = getattr(getattr(self, "hass", None), "config", None)
+        return str(getattr(lang, "language", "en") or "en").lower().startswith("ru")
+
+    def _t(self, en: str, ru: str) -> str:
+        return ru if self._ru() else en
 
     def _first_zone(self) -> str:
         return self._zone or (self.cfg["zones"][0]["key"] if self.cfg["zones"] else "")
@@ -113,17 +123,17 @@ class EditorMixin:
         z = self._zone
         if user_input is not None:
             ops.set_sensor(self.cfg, "illuminance", user_input.get("illuminance"), z)
-            ops.set_sensor(self.cfg, "presence", user_input.get("presence"), z)
+            ops.set_presence(self.cfg, z, user_input.get("presence"))
             ops.set_media(self.cfg, z, user_input.get("media", []))
             return await self._go(self._after_zone_sensors)
         by = lambda r: [s["entity"] for s in self.cfg["sensors"] if s["zone"] == z and s["role"] == r]
         untouched = not any(s["zone"] == z for s in self.cfg["sensors"])
         d = self._zone_area_defaults() if untouched else {}
         ill = (by("illuminance") or d.get("illuminance", [])[:1] or [None])[0]
-        pres = (by("presence") or d.get("presence", [])[:1] or [None])[0]
+        pres = by("presence") or d.get("presence") or []
         schema = vol.Schema({
             _opt("illuminance", ill): _ent(["sensor"]),
-            _opt("presence", pres): _ent(["binary_sensor"]),
+            _opt("presence", pres): _ent(["binary_sensor"], multiple=True),
             _opt("media", by("media") or d.get("media", [])): _ent(ROLE_DOMAINS["media"], multiple=True)})
         return self.async_show_form(step_id="zone_sensors", data_schema=schema,
                                     description_placeholders={"zone": self._zone_name()})
@@ -235,19 +245,153 @@ class EditorMixin:
         return self.async_show_form(step_id="params", data_schema=params_schema(self._level, cur),
                                     description_placeholders={"level": self._level, "target": self._target or "-"})
 
+    def _binding_selector(self, keys: list[str]):
+        off = self._t("Off", "Выкл")
+        options = [{"value": BINDING_OFF, "label": off}, *[{"value": k, "label": k} for k in keys]]
+        return sel.SelectSelector(sel.SelectSelectorConfig(options=options, mode=sel.SelectSelectorMode.DROPDOWN))
+
     async def async_step_zone_bindings(self, user_input=None):
         z = ops.find(self.cfg, "zones", self._zone)
         if user_input is not None:
-            z["bindings"] = {k: v for k, v in user_input.items() if v}
+            z["bindings"] = ops.bindings_from_form(user_input)
             return await self._go("zone_menu")
         groups = [g["key"] for g in self.cfg["groups"] if g["zone"] == self._zone]
         lamps = self._zone_lamp_options()
         fields = {}
         for slot, kind in BINDING_SLOTS.items():
             opts = groups if kind == "group" else lamps
-            fields[_opt(slot, z["bindings"].get(slot))] = sel.SelectSelector(sel.SelectSelectorConfig(options=opts))
+            fields[_opt(slot, z["bindings"].get(slot))] = self._binding_selector(opts)
         return self.async_show_form(step_id="zone_bindings", data_schema=vol.Schema(fields),
                                     description_placeholders={"zone": z["name"]})
+
+    # ---- detection rules (turn lamps on, and off after a delay; empty list = no detection control)
+    def _binary_sensors(self) -> list[str]:
+        out: list[str] = []
+        for s in self.cfg["sensors"]:
+            ent = s.get("entity") or ""
+            if s.get("zone") == self._zone and ent.startswith("binary_sensor.") and ent not in out:
+                out.append(ent)
+        return out
+
+    def _sensor_options(self) -> list[dict]:
+        label = self._t("Zone presence (any sensor)", "Присутствие зоны (любой датчик)")
+        return [{"value": ZONE_PRESENCE, "label": label}, *[{"value": e, "label": e} for e in self._binary_sensors()]]
+
+    def _rules_note(self, rules: list[dict]) -> str:
+        if not rules:
+            return self._t("No detection rules.", "Правил по детекции нет.")
+        return "\n".join(
+            f"{r['id']}: {r.get('sensor')} → {', '.join(r.get('lamps') or [])} ({r.get('brightness')}, {r.get('off_delay_s')} s)"
+            for r in rules)
+
+    def _suggest(self, name: str, current, *, required: bool = False):
+        marker = vol.Required if required else vol.Optional
+        if current in (None, "", []):
+            return marker(name)
+        return marker(name, description={"suggested_value": current})
+
+    def _detect_schema(self, cur: dict) -> vol.Schema:
+        pct = cur.get("brightness_pct", 30)
+        delay = cur.get("off_delay_s", 0)
+        kelvin = cur.get("color_temp_kelvin")
+        box = sel.NumberSelectorMode.BOX
+        return vol.Schema({
+            self._suggest("sensor", cur.get("sensor") or ZONE_PRESENCE, required=True): sel.SelectSelector(
+                sel.SelectSelectorConfig(options=self._sensor_options(), mode=sel.SelectSelectorMode.DROPDOWN)),
+            vol.Optional("sensor_entity"): _ent(["binary_sensor"]),
+            self._suggest("lamps", cur.get("lamps") or [], required=True): sel.SelectSelector(
+                sel.SelectSelectorConfig(options=self._zone_lamp_options(), multiple=True)),
+            self._suggest("brightness", cur.get("brightness") or "adaptive", required=True): sel.SelectSelector(
+                sel.SelectSelectorConfig(options=["adaptive", "fixed"], translation_key="detect_brightness")),
+            self._suggest("brightness_pct", pct): sel.NumberSelector(
+                sel.NumberSelectorConfig(min=1, max=100, step=1, mode=box, unit_of_measurement="%")),
+            self._suggest("color_temp_kelvin", kelvin): sel.NumberSelector(
+                sel.NumberSelectorConfig(min=1000, max=20000, step=50, mode=box, unit_of_measurement="K")),
+            self._suggest("off_delay_s", 0 if delay in (None, "") else int(delay), required=True): sel.NumberSelector(
+                sel.NumberSelectorConfig(min=0, max=86400, step=1, mode=box, unit_of_measurement="s")),
+        })
+
+    async def async_step_zone_detect(self, user_input=None):
+        z = ops.find(self.cfg, "zones", self._zone)
+        rules = z.get("detect_rules") or []
+        opts = ["detect_add", "detect_tpl_room", "detect_tpl_fridge"]
+        if rules:
+            opts.append("detect_delete")
+        opts.append(self._detect_back)
+        return self.async_show_menu(
+            step_id="zone_detect", menu_options=opts,
+            description_placeholders={"zone": z["name"], "rules": self._rules_note(rules)})
+
+    async def async_step_detect_add(self, user_input=None):
+        pre = dict(self._detect_prefill or {})
+        self._detect_prefill = None
+        errors: dict = {}
+        shown = pre
+        if user_input is not None:
+            shown = user_input
+            sensor = user_input.get("sensor_entity") or user_input.get("sensor")
+            lamps = ops.as_entities(user_input.get("lamps"))
+            brightness = user_input.get("brightness")
+            known = set(self._zone_lamp_options())
+            if not sensor or (sensor != ZONE_PRESENCE and not str(sensor).startswith("binary_sensor.")):
+                errors["base"] = "detect_needs_sensor"
+            elif not lamps or any(k not in known for k in lamps):
+                errors["base"] = "detect_needs_lamps"
+            elif brightness not in ("adaptive", "fixed"):
+                errors["base"] = "detect_needs_brightness"
+            else:
+                pct = user_input.get("brightness_pct")
+                kelvin = user_input.get("color_temp_kelvin")
+                try:
+                    delay = int(user_input.get("off_delay_s") if user_input.get("off_delay_s") not in (None, "") else 0)
+                except (TypeError, ValueError):
+                    delay = -1
+                if delay < 0 or (brightness == "fixed" and pct in (None, "")):
+                    errors["base"] = "bad_detect_rule"
+                else:
+                    rid = ops.add_detect_rule(
+                        self.cfg, self._zone, sensor=sensor, lamps=lamps, brightness=brightness, off_delay_s=delay,
+                        brightness_pct=None if brightness != "fixed" or pct in (None, "") else int(pct),
+                        color_temp_kelvin=None if brightness != "fixed" or kelvin in (None, "") else int(kelvin))
+                    if self._errors():
+                        ops.delete_detect_rule(self.cfg, self._zone, rid)
+                        errors = self._errors()
+                    else:
+                        return await self._go("zone_detect")
+        return self.async_show_form(
+            step_id="detect_add", data_schema=self._detect_schema(shown), errors=errors,
+            description_placeholders={"zone": self._zone_name()})
+
+    async def async_step_detect_tpl_room(self, user_input=None):
+        pre = ops.room_template(self.cfg, self._zone)
+        if not pre:
+            return self.async_show_form(
+                step_id="detect_add", errors={"base": "detect_needs_lamps"}, data_schema=self._detect_schema({}),
+                description_placeholders={"zone": self._zone_name()})
+        self._detect_prefill = pre
+        return await self.async_step_detect_add()
+
+    async def async_step_detect_tpl_fridge(self, user_input=None):
+        pre = ops.fridge_template(self.cfg, self._zone)
+        if not pre:
+            has_fridge = any(s.get("role") == "fridge" and s.get("zone") == self._zone for s in self.cfg["sensors"])
+            return self.async_show_form(
+                step_id="detect_add", errors={"base": "detect_needs_lamps" if has_fridge else "detect_no_fridge_sensor"},
+                data_schema=self._detect_schema({}), description_placeholders={"zone": self._zone_name()})
+        self._detect_prefill = pre
+        return await self.async_step_detect_add()
+
+    async def async_step_detect_delete(self, user_input=None):
+        rules = ops.find(self.cfg, "zones", self._zone).get("detect_rules") or []
+        if user_input is not None and user_input.get("rule"):
+            ops.delete_detect_rule(self.cfg, self._zone, user_input["rule"])
+            return await self._go("zone_detect")
+        if not rules:
+            return await self._go("zone_detect")
+        options = [{"value": r["id"], "label": f"{r['id']}: {r.get('sensor')} → {', '.join(r.get('lamps') or [])}"} for r in rules]
+        return self.async_show_form(
+            step_id="detect_delete", description_placeholders={"zone": self._zone_name()},
+            data_schema=vol.Schema({vol.Required("rule"): sel.SelectSelector(sel.SelectSelectorConfig(options=options))}))
 
     # ---- final check
     def _errors(self) -> dict:
@@ -273,6 +417,7 @@ class AdaptiveLightConfigFlow(EditorMixin, config_entries.ConfigFlow, domain=DOM
     _after_zone_lamps = "groups_menu"
     _after_group = "groups_menu"
     _after_params = "save"
+    _detect_back = "groups_menu"
 
     def __init__(self) -> None:
         self.cfg = empty_config()
@@ -326,7 +471,7 @@ class AdaptiveLightConfigFlow(EditorMixin, config_entries.ConfigFlow, domain=DOM
         return await self._zone_area_step("zone", user_input)
 
     async def async_step_groups_menu(self, user_input=None):
-        return self.async_show_menu(step_id="groups_menu", menu_options=["group_add", "more_zones"])
+        return self.async_show_menu(step_id="groups_menu", menu_options=["group_add", "zone_detect", "more_zones"])
 
     async def async_step_more_zones(self, user_input=None):
         return self.async_show_menu(step_id="more_zones", menu_options=["zone", "save"])
@@ -346,6 +491,7 @@ class AdaptiveLightOptionsFlow(EditorMixin, config_entries.OptionsFlow):
     _after_zone_sensors = "zone_menu"
     _after_zone_lamps = "zone_menu"
     _after_group = "zone_menu"
+    _detect_back = "zone_menu"
     _after_params = "init"
 
     def __init__(self) -> None:
@@ -392,7 +538,8 @@ class AdaptiveLightOptionsFlow(EditorMixin, config_entries.OptionsFlow):
 
     async def async_step_zone_menu(self, user_input=None):
         return self.async_show_menu(step_id="zone_menu", menu_options=[
-            "zone_sensors", "zone_extra_sensors", "zone_lamps", "group_add", "zone_params", "zone_bindings", "zone_remove", "init"],
+            "zone_sensors", "zone_extra_sensors", "zone_lamps", "group_add", "zone_params", "zone_bindings",
+            "zone_detect", "zone_remove", "init"],
             description_placeholders={"zone": self._zone_name()})
 
     async def async_step_zone_params(self, user_input=None):

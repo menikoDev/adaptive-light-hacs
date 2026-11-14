@@ -103,7 +103,7 @@ def test_area_step_offers_areas_and_prefills_name_key_lamps_and_sensors():
     assert r["step_id"] == "zone_name" and fields(r) == {"name": "Bedroom", "key": "bedroom"}
     r = sub(f, "zone_name", {"name": "Bedroom", "key": "bedroom"})
     assert r["step_id"] == "zone_sensors"
-    assert fields(r) == {"illuminance": "sensor.bed_lux", "presence": "binary_sensor.bed_occ", "media": ["media_player.bed_tv"]}
+    assert fields(r) == {"illuminance": "sensor.bed_lux", "presence": ["binary_sensor.bed_occ"], "media": ["media_player.bed_tv"]}
     r = sub(f, "zone_sensors", {"illuminance": "sensor.bed_lux"})
     assert r["step_id"] == "zone_lamps" and fields(r) == {"lamps": ["light.bed_a", "light.bed_b"]}
     z = f.cfg["zones"][0]
@@ -221,3 +221,87 @@ def test_preset_goes_to_save_and_clears_its_draft():
     store = draft.MemoryDraftStore(); f = Wizard(store)
     r = sub(f, "preset_plan"); assert r["step_id"] == "save" and store.data["step"] == "save"
     assert sub(f, "save", {})["type"] == "create_entry" and store.data is None
+
+
+def _selector(result, name):
+    for key, value in result["data_schema"].schema.items():
+        if str(key) == name:
+            return value
+    raise AssertionError(name)
+
+
+# ---------------------------------------------------------------- bindings: explicit Off
+
+def test_binding_off_removes_the_slot_and_empty_still_means_off():
+    from adaptive_light.model import plan_living_room
+    f = Options(plan_living_room())
+    f._load()
+    f._zone = "living_room"
+    r = sub(f, "zone_bindings")
+    assert {"value": "__off__", "label": "Off"} in _selector(r, "fridge_lamp").config["options"]
+    f.hass = types.SimpleNamespace(config=types.SimpleNamespace(language="ru"))
+    r = sub(f, "zone_bindings")
+    assert {"value": "__off__", "label": "Выкл"} in _selector(r, "top_group").config["options"]
+    sub(f, "zone_bindings", {
+        "top_group": "top", "desk_group": "desk_group", "wake_group": "wake",
+        "fridge_lamp": "__off__", "vent_left": "top_right", "vent_right": "bottom", "green_lamp": "",
+    })
+    bindings = f.cfg["zones"][0]["bindings"]
+    assert bindings["top_group"] == "top" and "fridge_lamp" not in bindings and "green_lamp" not in bindings
+    assert "desk_group" in bindings and "vent_right" in bindings
+
+
+def test_zone_sensors_keep_one_presence_sensor_and_accept_several():
+    from adaptive_light.model import plan_living_room
+    f = Options(plan_living_room())
+    f._load()
+    f._zone = "living_room"
+    lux = "sensor.living_room_presence_sensor_light_sensor_light_level"
+    one = "binary_sensor.living_room_presence_sensor"
+    r = sub(f, "zone_sensors")
+    assert fields(r)["presence"] == [one]
+    sub(f, "zone_sensors", {"illuminance": lux, "presence": [one]})
+    got = [s["entity"] for s in f.cfg["sensors"] if s["role"] == "presence" and s["zone"] == "living_room"]
+    assert got == [one]
+    sub(f, "zone_sensors", {"illuminance": lux, "presence": [one, "binary_sensor.living_room_presence_sensor_entrance_zone"]})
+    got = [s["entity"] for s in f.cfg["sensors"] if s["role"] == "presence" and s["zone"] == "living_room"]
+    assert got == [one, "binary_sensor.living_room_presence_sensor_entrance_zone"]
+
+
+def test_wizard_offers_detection_rules_and_the_fridge_template_is_not_saved_until_submit():
+    from adaptive_light.model import plan_living_room
+    f = Wizard(draft.MemoryDraftStore())
+    sub(f, "preset_plan")
+    assert "zone_detect" in sub(f, "groups_menu")["menu_options"]
+    # preset jumps to save; open detection from a fresh options flow, which is where a zone is edited
+    g = Options(plan_living_room())
+    g._load()
+    g._zone = "living_room"
+    menu = sub(g, "zone_menu")
+    assert "zone_detect" in menu["menu_options"]
+    r = sub(g, "detect_tpl_fridge")
+    assert r["step_id"] == "detect_add" and not g.cfg["zones"][0].get("detect_rules")
+    assert fields(r)["sensor"] == "binary_sensor.living_room_presence_sensor_refrigerator_zone"
+    assert fields(r)["lamps"] == ["bottom"] and fields(r)["brightness"] == "fixed"
+    assert fields(r)["brightness_pct"] == 30 and fields(r)["color_temp_kelvin"] == 4500 and fields(r)["off_delay_s"] == 10
+    sub(g, "detect_add", {
+        "sensor": fields(r)["sensor"], "lamps": ["bottom"], "brightness": "fixed",
+        "brightness_pct": 30, "color_temp_kelvin": 4500, "off_delay_s": 10,
+    })
+    rules = g.cfg["zones"][0]["detect_rules"]
+    assert len(rules) == 1 and rules[0]["sensor"].endswith("refrigerator_zone") and rules[0]["lamps"] == ["bottom"]
+    r = sub(g, "zone_detect")
+    assert "detect_delete" in r["menu_options"]
+    sub(g, "detect_delete", {"rule": rules[0]["id"]})
+    assert g.cfg["zones"][0]["detect_rules"] == []
+
+
+def test_room_template_prefills_zone_presence_and_the_main_group():
+    from adaptive_light.model import plan_living_room
+    f = Options(plan_living_room())
+    f._load()
+    f._zone = "living_room"
+    r = sub(f, "detect_tpl_room")
+    assert fields(r)["sensor"] == "zone_presence" and fields(r)["brightness"] == "adaptive"
+    assert fields(r)["lamps"] == ["top_left", "top_right", "bottom"] and fields(r)["off_delay_s"] == 600
+    assert not f.cfg["zones"][0].get("detect_rules")
