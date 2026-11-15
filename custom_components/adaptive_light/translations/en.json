@@ -1,8 +1,5 @@
 {
   "config": {
-    "abort": {
-      "single_instance_allowed": "Adaptive Light is already configured"
-    },
     "error": {
       "need_name": "Enter a zone name",
       "need_lamps": "Pick at least one lamp",
@@ -15,25 +12,13 @@
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "When any presence sensor turns on, the lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed.",
+        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed. Another zone is added as another entry.",
         "data": {
           "Zone name": "Zone name",
           "Lamps": "Lamps",
           "Presence sensors": "Presence sensors",
           "Off timeout, s": "Off timeout, s"
         }
-      },
-      "more": {
-        "title": "Another zone",
-        "description": "Add another room, or finish.",
-        "menu_options": {
-          "zone": "Add another zone",
-          "save": "Finish"
-        }
-      },
-      "save": {
-        "title": "Finish",
-        "description": "Save the zones."
       }
     }
   },
@@ -48,42 +33,15 @@
       "need_zone": "Add a zone"
     },
     "step": {
-      "init": {
-        "title": "Adaptive Light",
-        "description": "Edit a zone or add one. A zone is a name, lamps, presence sensors, and an off timeout.",
-        "menu_options": {
-          "pick": "Edit a zone",
-          "add": "Add a zone"
-        }
-      },
-      "pick": {
-        "title": "Zone",
-        "description": "Choose the zone to edit.",
-        "data": {
-          "Zone": "Zone"
-        }
-      },
-      "zone_menu": {
-        "title": "{zone}",
-        "menu_options": {
-          "edit": "Edit",
-          "remove": "Remove zone",
-          "init": "Back"
-        }
-      },
       "zone": {
         "title": "Zone",
-        "description": "When any presence sensor turns on, the lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed.",
+        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed.",
         "data": {
           "Zone name": "Zone name",
           "Lamps": "Lamps",
           "Presence sensors": "Presence sensors",
           "Off timeout, s": "Off timeout, s"
         }
-      },
-      "remove": {
-        "title": "Remove {zone}?",
-        "description": "The zone is removed. Its lamps are left as they are."
       }
     }
   }

@@ -1,4 +1,4 @@
-"""The wizard and the options flow edit a zone through the same four fields."""
+"""Each zone is its own entry. The four fields are the only window."""
 import asyncio
 import importlib.util
 import os
@@ -31,20 +31,26 @@ def run(coro):
     return asyncio.run(coro)
 
 
+class _Entries:
+    def async_update_entry(self, entry, title=None):
+        entry.title = title
+
+
 class Wizard(cf.AdaptiveLightConfigFlow):
-    def __init__(self):
+    def __init__(self, entries=None):
         super().__init__()
         self.hass = HASS
+        self._entries = list(entries or [])
 
     def _async_current_entries(self, include_ignore=None):
-        return []
+        return self._entries
 
 
 class Options(cf.AdaptiveLightOptionsFlow):
-    def __init__(self, cfg):
+    def __init__(self, cfg, title="Hall"):
         super().__init__()
-        self.hass = HASS
-        self._entry = types.SimpleNamespace(options={}, data={CONF_CONFIG: cfg})
+        self._entry = types.SimpleNamespace(options={}, data={CONF_CONFIG: cfg}, title=title)
+        self.hass = types.SimpleNamespace(config=HASS.config, config_entries=_Entries())
 
     @property
     def config_entry(self):
@@ -68,49 +74,64 @@ def _fill(labels, name="Hall", lamps=None, presence=None, timeout=45):
     }
 
 
-def test_the_wizard_and_options_edit_the_same_four_fields():
+def _entry(data, title):
+    return types.SimpleNamespace(options={}, data=data, title=title)
+
+
+def test_one_window_creates_one_zone_and_another_entry_is_independent():
     flow = Wizard()
     form = sub(flow, "user")
     assert form["type"] == "form" and form["step_id"] == "zone"
     assert names(form) == EN
-    menu = sub(flow, "zone", _fill(EN))
-    assert menu["type"] == "menu"
-    assert menu["menu_options"] == {"zone": "Add another zone", "save": "Finish"}
-    zone = flow.cfg["zones"][0]
+    created = sub(flow, "zone", _fill(EN))
+    assert created["type"] == "create_entry" and created["title"] == "Hall"
+    assert len(created["data"]["config"]["zones"]) == 1
+    zone = created["data"]["config"]["zones"][0]
     assert set(zone) == ZONE_KEYS
-    assert zone == {
-        "key": "hall", "name": "Hall", "lamps": ["light.a", "light.b"],
-        "presence": ["binary_sensor.p"], "off_timeout": 45,
-    }
-    created = sub(flow, "save")
-    assert created["type"] == "create_entry"
-    assert set(created["data"]["config"]) == {"version", "zones"}
-    assert "rules" not in created["data"]["config"]
+    assert zone["key"] == "hall" and zone["off_timeout"] == 45
 
-    options = Options(created["data"]["config"])
-    menu = sub(options, "init")
-    assert menu["menu_options"] == {"pick": "Edit a zone", "add": "Add a zone"}
-    picked = sub(options, "pick")
-    assert names(picked) == ["Zone"]
-    sub(options, "pick", {"Zone": "hall"})
-    assert sub(options, "zone_menu")["menu_options"]["edit"] == "Edit"
-    edited = sub(options, "edit")
-    assert names(edited) == EN
-    saved = sub(options, "edit", _fill(EN, lamps=["light.a"], presence=["binary_sensor.p", "binary_sensor.q"], timeout=10))
+    again = Wizard(entries=[_entry(created["data"], "Hall")])
+    form = sub(again, "user")
+    assert form["type"] == "form" and names(form) == EN
+    second = sub(again, "zone", _fill(EN, name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"], timeout=20))
+    assert second["type"] == "create_entry" and second["title"] == "Kitchen"
+    other = second["data"]["config"]["zones"]
+    assert len(other) == 1 and other[0]["key"] == "kitchen"
+    assert other[0]["lamps"] == ["light.k"] and zone["lamps"] == ["light.a", "light.b"]
+
+    same_name = Wizard(entries=[_entry(created["data"], "Hall")])
+    third = sub(same_name, "zone", _fill(EN, name="Hall", lamps=["light.c"], presence=["binary_sensor.c"]))
+    assert third["title"] == "Hall"
+    assert third["data"]["config"]["zones"][0]["key"] == "hall_2"
+    assert third["data"]["config"]["zones"][0]["lamps"] == ["light.c"]
+
+
+def test_options_is_the_same_window_and_keeps_this_zone_only():
+    cfg = {
+        "version": 5,
+        "zones": [{
+            "key": "hall", "name": "Hall", "lamps": ["light.a", "light.b"],
+            "presence": ["binary_sensor.p"], "off_timeout": 45,
+        }],
+    }
+    options = Options(cfg)
+    form = sub(options, "init")
+    assert form["type"] == "form" and form["step_id"] == "zone"
+    assert names(form) == EN
+    saved = sub(options, "zone", _fill(EN, name="Hall renamed", lamps=["light.a"], presence=["binary_sensor.p", "binary_sensor.q"], timeout=10))
     assert saved["type"] == "create_entry"
-    zone = saved["data"]["config"]["zones"][0]
-    assert set(zone) == ZONE_KEYS
-    assert zone["key"] == "hall" and zone["lamps"] == ["light.a"]
-    assert zone["presence"] == ["binary_sensor.p", "binary_sensor.q"] and zone["off_timeout"] == 10
+    zones = saved["data"]["config"]["zones"]
+    assert len(zones) == 1 and set(zones[0]) == ZONE_KEYS
+    assert zones[0]["key"] == "hall" and zones[0]["name"] == "Hall renamed"
+    assert zones[0]["lamps"] == ["light.a"] and zones[0]["off_timeout"] == 10
+    assert options.config_entry.title == "Hall renamed"
 
     HASS.config.language = "ru"
     try:
         russian = Wizard()
         assert names(sub(russian, "user")) == RU
-        assert sub(russian, "zone", _fill(RU, name="Кухня"))["menu_options"]["save"] == "Готово"
-        again = Options(created["data"]["config"])
-        assert sub(again, "init")["menu_options"]["add"] == "Добавить зону"
-        assert names(sub(again, "edit")) == RU
+        ru_options = Options(cfg)
+        assert names(sub(ru_options, "init")) == RU
     finally:
         HASS.config.language = "en"
 
@@ -120,4 +141,4 @@ def test_a_zone_without_lamps_or_presence_stays_on_the_form():
     result = sub(flow, "zone", _fill(EN, lamps=[], presence=[]))
     assert result["step_id"] == "zone" and result["errors"]["Lamps"] == "need_lamps"
     assert result["errors"]["Presence sensors"] == "need_presence"
-    assert flow.cfg["zones"] == []
+    assert result["type"] == "form"
