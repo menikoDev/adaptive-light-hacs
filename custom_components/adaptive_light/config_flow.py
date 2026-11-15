@@ -15,51 +15,8 @@ from .const import CONF_CONFIG, DOMAIN
 from .model import empty_config, normalise, unique_key, validate
 from .momentary import keep_section, parse_actions, write_action
 
-LABELS = {
-    "en": {
-        "name": "Zone name",
-        "lamps": "Lamps",
-        "presence": "Presence sensors",
-        "off_timeout": "Off timeout, s",
-        "night": "Night mode",
-        "night_start": "Night from",
-        "night_end": "Night until",
-        "night_still": "Still, min",
-    },
-    "ru": {
-        "name": "Название зоны",
-        "lamps": "Лампы",
-        "presence": "Датчики присутствия",
-        "off_timeout": "Таймаут выключения, с",
-        "night": "Ночной режим",
-        "night_start": "Ночь с",
-        "night_end": "Ночь до",
-        "night_still": "Без движения, мин",
-    },
-}
-
-MOMENTARY = {
-    "en": {
-        "lamp": "Lamp",
-        "color": "Color",
-        "duration": "Duration, s",
-        "return": "Return",
-        "which": "Action",
-        "new": "New",
-        "restore": "Restore",
-        "off": "Off",
-    },
-    "ru": {
-        "lamp": "Лампа",
-        "color": "Цвет",
-        "duration": "Длительность, с",
-        "return": "Возврат",
-        "which": "Действие",
-        "new": "Новое",
-        "restore": "Вернуть",
-        "off": "Выключить",
-    },
-}
+# Schema keys are the translation keys. The visible words live in strings.json
+# and translations/{en,ru}.json under the same key.
 
 
 def _as_list(value: Any) -> list[str]:
@@ -108,13 +65,6 @@ class _Fields:
     cfg: dict
     _zone: str = ""
 
-    def _ru(self) -> bool:
-        lang = getattr(getattr(self, "hass", None), "config", None)
-        return str(getattr(lang, "language", "en") or "en").lower().startswith("ru")
-
-    def _labels(self) -> dict[str, str]:
-        return LABELS["ru" if self._ru() else "en"]
-
     def _used_keys(self) -> set[str]:
         used: set[str] = set()
         getter = getattr(self, "_async_current_entries", None)
@@ -134,20 +84,17 @@ class _Fields:
         return used
 
     def _current(self, submitted: dict | None) -> dict:
-        labels = self._labels()
         if submitted is not None:
-            rev = {label: key for key, label in labels.items()}
-            return {rev.get(key, key): value for key, value in submitted.items()}
+            return submitted
         for zone in self.cfg.get("zones") or []:
             if zone.get("key") == self._zone:
                 return zone
         return {"off_timeout": 60}
 
     def _field(self, key: str, selector, value: Any):
-        label = self._labels()[key]
         if value in (None, "", []):
-            return vol.Required(label), selector
-        return vol.Required(label, description={"suggested_value": value}), selector
+            return vol.Required(key), selector
+        return vol.Required(key, description={"suggested_value": value}), selector
 
     def _schema(self, current: dict) -> vol.Schema:
         name, name_sel = self._field("name", sel.TextSelector(), current.get("name") or None)
@@ -180,32 +127,31 @@ class _Fields:
         })
 
     def _parse(self, user_input: dict) -> tuple[dict | None, dict]:
-        labels = self._labels()
-        name = str(user_input.get(labels["name"]) or "").strip()
-        lamps = _as_list(user_input.get(labels["lamps"]))
-        presence = _as_list(user_input.get(labels["presence"]))
-        timeout = _timeout(user_input.get(labels["off_timeout"]))
+        name = str(user_input.get("name") or "").strip()
+        lamps = _as_list(user_input.get("lamps"))
+        presence = _as_list(user_input.get("presence"))
+        timeout = _timeout(user_input.get("off_timeout"))
         errors: dict[str, str] = {}
         if not name:
-            errors[labels["name"]] = "need_name"
+            errors["name"] = "need_name"
         if not lamps:
-            errors[labels["lamps"]] = "need_lamps"
+            errors["lamps"] = "need_lamps"
         elif any(not item.startswith("light.") for item in lamps):
-            errors[labels["lamps"]] = "bad_lamp"
+            errors["lamps"] = "bad_lamp"
         if not presence:
-            errors[labels["presence"]] = "need_presence"
+            errors["presence"] = "need_presence"
         elif any(not item.startswith("binary_sensor.") for item in presence):
-            errors[labels["presence"]] = "bad_presence"
+            errors["presence"] = "bad_presence"
         if timeout is None:
-            errors[labels["off_timeout"]] = "bad_timeout"
-        night = user_input.get(labels["night"]) is True
-        start = _hhmm(user_input.get(labels["night_start"])) or "02:00"
-        end = _hhmm(user_input.get(labels["night_end"])) or "06:00"
-        still = _timeout(user_input.get(labels["night_still"]))
+            errors["off_timeout"] = "bad_timeout"
+        night = user_input.get("night") is True
+        start = _hhmm(user_input.get("night_start")) or "02:00"
+        end = _hhmm(user_input.get("night_end")) or "06:00"
+        still = _timeout(user_input.get("night_still"))
         if still is None:
             still = 60
         if still < 1:
-            errors[labels["night_still"]] = "bad_timeout"
+            errors["night_still"] = "bad_timeout"
         if errors:
             return None, errors
         return {
@@ -288,9 +234,6 @@ class AdaptiveLightOptionsFlow(_Fields, config_entries.OptionsFlow):
         self._zone = zones[0]["key"] if zones else ""
         self._loaded = True
 
-    def _ml(self) -> dict[str, str]:
-        return MOMENTARY["ru" if self._ru() else "en"]
-
     def _zone_title(self) -> str:
         for zone in self.cfg.get("zones") or []:
             if zone.get("key") == self._zone and zone.get("name"):
@@ -304,27 +247,26 @@ class AdaptiveLightOptionsFlow(_Fields, config_entries.OptionsFlow):
     async def async_step_momentary(self, user_input=None):
         self._load()
         actions = parse_actions(self.cfg)
-        labels = self._ml()
         if len(actions) > 1 and self._action_key is None:
-            if user_input is None or labels["which"] in user_input:
+            if user_input is None or ("action" in user_input and "lamp" not in user_input):
                 if user_input is not None:
-                    choice = user_input.get(labels["which"])
+                    choice = user_input.get("action")
                     self._action_key = "" if choice in (None, "new") else str(choice)
                 else:
-                    options = [{"value": action["key"], "label": action["key"]} for action in actions]
-                    options.append({"value": "new", "label": labels["new"]})
+                    options = [action["key"] for action in actions] + ["new"]
                     schema = vol.Schema({
-                        vol.Required(labels["which"]): sel.SelectSelector(sel.SelectSelectorConfig(options=options)),
+                        vol.Required("action"): sel.SelectSelector(sel.SelectSelectorConfig(
+                            options=options, translation_key="momentary_action",
+                        )),
                     })
                     return self.async_show_form(step_id="momentary", data_schema=schema)
         elif len(actions) == 1 and self._action_key is None:
             self._action_key = actions[0]["key"]
-        if user_input is not None and labels["which"] in user_input and labels["lamp"] not in user_input:
+        if user_input is not None and "action" in user_input and "lamp" not in user_input:
             user_input = None
         return await self._save_momentary(user_input)
 
     async def _save_momentary(self, user_input):
-        labels = self._ml()
         current = self._momentary_current()
         if user_input is None:
             return self.async_show_form(step_id="momentary", data_schema=self._momentary_schema(current))
@@ -343,34 +285,31 @@ class AdaptiveLightOptionsFlow(_Fields, config_entries.OptionsFlow):
         return {"color": "white", "duration": 10, "return": "restore"}
 
     def _momentary_submitted(self, user_input: dict) -> dict:
-        labels = self._ml()
-        lamps = _as_list(user_input.get(labels["lamp"]))
+        lamps = _as_list(user_input.get("lamp"))
         return {
             "lamp": lamps[0] if lamps else "",
-            "color": user_input.get(labels["color"]) or "",
-            "duration": user_input.get(labels["duration"], 10),
-            "return": user_input.get(labels["return"]) or "restore",
+            "color": user_input.get("color") or "",
+            "duration": user_input.get("duration", 10),
+            "return": user_input.get("return") or "restore",
         }
 
     def _momentary_schema(self, current: dict) -> vol.Schema:
-        labels = self._ml()
         lamp, lamp_sel = self._named(
-            labels["lamp"],
+            "lamp",
             sel.EntitySelector(sel.EntitySelectorConfig(domain="light", multiple=False)),
             current.get("lamp") or None,
         )
-        color, color_sel = self._named(labels["color"], sel.TextSelector(), current.get("color") or "white")
+        color, color_sel = self._named("color", sel.TextSelector(), current.get("color") or "white")
         duration, duration_sel = self._named(
-            labels["duration"],
+            "duration",
             sel.NumberSelector(sel.NumberSelectorConfig(min=1, max=86400, step=1, unit_of_measurement="s", mode=sel.NumberSelectorMode.BOX)),
             current.get("duration", 10),
         )
         choice, choice_sel = self._named(
-            labels["return"],
-            sel.SelectSelector(sel.SelectSelectorConfig(options=[
-                {"value": "restore", "label": labels["restore"]},
-                {"value": "off", "label": labels["off"]},
-            ])),
+            "return",
+            sel.SelectSelector(sel.SelectSelectorConfig(
+                options=["restore", "off"], translation_key="return_mode",
+            )),
             current.get("return") or "restore",
         )
         return vol.Schema({lamp: lamp_sel, color: color_sel, duration: duration_sel, choice: choice_sel})
@@ -381,20 +320,19 @@ class AdaptiveLightOptionsFlow(_Fields, config_entries.OptionsFlow):
         return vol.Required(label, description={"suggested_value": value}), selector
 
     def _parse_momentary(self, user_input: dict) -> tuple[dict | None, dict]:
-        labels = self._ml()
-        lamps = _as_list(user_input.get(labels["lamp"]))
-        color = str(user_input.get(labels["color"]) or "").strip()
-        duration = _timeout(user_input.get(labels["duration"]))
-        mode = user_input.get(labels["return"])
+        lamps = _as_list(user_input.get("lamp"))
+        color = str(user_input.get("color") or "").strip()
+        duration = _timeout(user_input.get("duration"))
+        mode = user_input.get("return")
         errors: dict[str, str] = {}
         if len(lamps) != 1 or not lamps[0].startswith("light."):
-            errors[labels["lamp"]] = "bad_lamp"
+            errors["lamp"] = "bad_lamp"
         if not color:
-            errors[labels["color"]] = "need_color"
+            errors["color"] = "need_color"
         if duration is None or duration < 1:
-            errors[labels["duration"]] = "bad_duration"
+            errors["duration"] = "bad_duration"
         if mode not in ("restore", "off"):
-            errors[labels["return"]] = "bad_return"
+            errors["return"] = "bad_return"
         if errors:
             return None, errors
         return {"lamp": lamps[0], "color": color, "duration": duration, "return": mode}, {}

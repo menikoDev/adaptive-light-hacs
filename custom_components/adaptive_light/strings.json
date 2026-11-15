@@ -7,21 +7,43 @@
       "bad_timeout": "Enter the off timeout in seconds",
       "bad_lamp": "Lamps must be light entities",
       "bad_presence": "Presence must be binary sensors",
-      "need_zone": "Add a zone"
+      "need_zone": "Add a zone",
+      "need_color": "Enter a color",
+      "bad_duration": "Enter the duration in seconds",
+      "bad_return": "Choose restore or off"
     },
     "step": {
+      "init": {
+        "title": "Adaptive Light",
+        "description": "The zone, or a momentary action on this entry.",
+        "menu_options": {
+          "zone": "Zone",
+          "momentary": "Momentary action"
+        }
+      },
       "zone": {
         "title": "Zone",
         "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed. Another zone is added as another entry.",
         "data": {
-          "Zone name": "Zone name",
-          "Lamps": "Lamps",
-          "Presence sensors": "Presence sensors",
-          "Off timeout, s": "Off timeout, s",
-          "Night mode": "Night mode",
-          "Night from": "Night from",
-          "Night until": "Night until",
-          "Still, min": "Still, min"
+          "name": "Zone name",
+          "lamps": "Lamps",
+          "presence": "Presence sensors",
+          "off_timeout": "Off timeout, s",
+          "night": "Night mode",
+          "night_start": "Night from",
+          "night_end": "Night until",
+          "night_still": "Still, min"
+        }
+      },
+      "momentary": {
+        "title": "Momentary action",
+        "description": "On trigger the lamp's current state is saved, the color is applied, and after the duration the snapshot is restored or the lamp turns off. A sensor or button trigger already stored on this action is kept.",
+        "data": {
+          "action": "Action",
+          "lamp": "Lamp",
+          "color": "Color",
+          "duration": "Duration, s",
+          "return": "Return"
         }
       }
     }
@@ -48,29 +70,54 @@
           "momentary": "Momentary action"
         }
       },
-      "momentary": {
-        "title": "Momentary action",
-        "description": "On trigger the lamp's current state is saved, the color is applied, and after the duration the snapshot is restored or the lamp turns off. A sensor or button trigger already stored on this action is kept.",
-        "data": {
-          "Action": "Action",
-          "Lamp": "Lamp",
-          "Color": "Color",
-          "Duration, s": "Duration, s",
-          "Return": "Return"
-        }
-      },
       "zone": {
         "title": "Zone",
         "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed.",
         "data": {
-          "Zone name": "Zone name",
-          "Lamps": "Lamps",
-          "Presence sensors": "Presence sensors",
-          "Off timeout, s": "Off timeout, s",
-          "Night mode": "Night mode",
-          "Night from": "Night from",
-          "Night until": "Night until",
-          "Still, min": "Still, min"
+          "name": "Zone name",
+          "lamps": "Lamps",
+          "presence": "Presence sensors",
+          "off_timeout": "Off timeout, s",
+          "night": "Night mode",
+          "night_start": "Night from",
+          "night_end": "Night until",
+          "night_still": "Still, min"
+        }
+      },
+      "momentary": {
+        "title": "Momentary action",
+        "description": "On trigger the lamp's current state is saved, the color is applied, and after the duration the snapshot is restored or the lamp turns off. A sensor or button trigger already stored on this action is kept.",
+        "data": {
+          "action": "Action",
+          "lamp": "Lamp",
+          "color": "Color",
+          "duration": "Duration, s",
+          "return": "Return"
+        }
+      }
+    }
+  },
+  "selector": {
+    "return_mode": {
+      "options": {
+        "restore": "Restore",
+        "off": "Off"
+      }
+    },
+    "momentary_action": {
+      "options": {
+        "new": "New"
+      }
+    }
+  },
+  "services": {
+    "momentary_action": {
+      "name": "Momentary action",
+      "description": "Snapshot the lamp, apply the configured color, and restore or turn it off when the timer ends.",
+      "fields": {
+        "action": {
+          "name": "Action",
+          "description": "Key of one momentary action."
         }
       }
     }

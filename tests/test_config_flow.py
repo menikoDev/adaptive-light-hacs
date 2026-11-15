@@ -24,8 +24,7 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-EN = ["Zone name", "Lamps", "Presence sensors", "Off timeout, s", "Night mode", "Night from", "Night until", "Still, min"]
-RU = ["Название зоны", "Лампы", "Датчики присутствия", "Таймаут выключения, с", "Ночной режим", "Ночь с", "Ночь до", "Без движения, мин"]
+FIELDS = ["name", "lamps", "presence", "off_timeout", "night", "night_start", "night_end", "night_still"]
 ZONE_KEYS = {"key", "name", "lamps", "presence", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
@@ -67,12 +66,12 @@ def sub(flow, step, data=None):
     return run(getattr(flow, f"async_step_{step}")(data))
 
 
-def _fill(labels, name="Hall", lamps=None, presence=None, timeout=45):
+def _fill(name="Hall", lamps=None, presence=None, timeout=45):
     return {
-        labels[0]: name,
-        labels[1]: lamps if lamps is not None else ["light.a", "light.b"],
-        labels[2]: presence if presence is not None else ["binary_sensor.p"],
-        labels[3]: timeout,
+        "name": name,
+        "lamps": ["light.a", "light.b"] if lamps is None else lamps,
+        "presence": ["binary_sensor.p"] if presence is None else presence,
+        "off_timeout": timeout,
     }
 
 
@@ -84,8 +83,8 @@ def test_one_window_creates_one_zone_and_another_entry_is_independent():
     flow = Wizard()
     form = sub(flow, "user")
     assert form["type"] == "form" and form["step_id"] == "zone"
-    assert names(form) == EN
-    created = sub(flow, "zone", _fill(EN))
+    assert names(form) == FIELDS
+    created = sub(flow, "zone", _fill())
     assert created["type"] == "create_entry" and created["title"] == "Hall"
     assert len(created["data"]["config"]["zones"]) == 1
     zone = created["data"]["config"]["zones"][0]
@@ -94,15 +93,15 @@ def test_one_window_creates_one_zone_and_another_entry_is_independent():
 
     again = Wizard(entries=[_entry(created["data"], "Hall")])
     form = sub(again, "user")
-    assert form["type"] == "form" and names(form) == EN
-    second = sub(again, "zone", _fill(EN, name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"], timeout=20))
+    assert form["type"] == "form" and names(form) == FIELDS
+    second = sub(again, "zone", _fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"], timeout=20))
     assert second["type"] == "create_entry" and second["title"] == "Kitchen"
     other = second["data"]["config"]["zones"]
     assert len(other) == 1 and other[0]["key"] == "kitchen"
     assert other[0]["lamps"] == ["light.k"] and zone["lamps"] == ["light.a", "light.b"]
 
     same_name = Wizard(entries=[_entry(created["data"], "Hall")])
-    third = sub(same_name, "zone", _fill(EN, name="Hall", lamps=["light.c"], presence=["binary_sensor.c"]))
+    third = sub(same_name, "zone", _fill(name="Hall", lamps=["light.c"], presence=["binary_sensor.c"]))
     assert third["title"] == "Hall"
     assert third["data"]["config"]["zones"][0]["key"] == "hall_2"
     assert third["data"]["config"]["zones"][0]["lamps"] == ["light.c"]
@@ -121,8 +120,8 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
     assert menu["type"] == "menu" and menu["menu_options"] == ["zone", "momentary"]
     form = sub(options, "zone")
     assert form["type"] == "form" and form["step_id"] == "zone"
-    assert names(form) == EN
-    saved = sub(options, "zone", _fill(EN, name="Hall renamed", lamps=["light.a"], presence=["binary_sensor.p", "binary_sensor.q"], timeout=10))
+    assert names(form) == FIELDS
+    saved = sub(options, "zone", _fill(name="Hall renamed", lamps=["light.a"], presence=["binary_sensor.p", "binary_sensor.q"], timeout=10))
     assert saved["type"] == "create_entry"
     zones = saved["data"]["config"]["zones"]
     assert len(zones) == 1 and set(zones[0]) == ZONE_KEYS
@@ -132,10 +131,8 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
 
     HASS.config.language = "ru"
     try:
-        russian = Wizard()
-        assert names(sub(russian, "user")) == RU
-        ru_options = Options(cfg)
-        assert names(sub(ru_options, "zone")) == RU
+        assert names(sub(Wizard(), "user")) == FIELDS
+        assert names(sub(Options(cfg), "zone")) == FIELDS
     finally:
         HASS.config.language = "en"
 
@@ -161,7 +158,7 @@ class _Services:
 
 def test_the_flow_saves_the_four_fields_and_a_yaml_zone_still_loads():
     flow = Wizard()
-    created = sub(flow, "zone", _fill(EN, name="Hall", lamps=["light.a"], presence=["binary_sensor.p"], timeout=12))
+    created = sub(flow, "zone", _fill(name="Hall", lamps=["light.a"], presence=["binary_sensor.p"], timeout=12))
     zone = created["data"]["config"]["zones"][0]
     assert zone["name"] == "Hall"
     assert zone["lamps"] == ["light.a"]
@@ -199,8 +196,8 @@ def test_options_can_edit_a_momentary_action_and_saving_the_zone_keeps_it():
     }
     options = Options(cfg)
     form = sub(options, "momentary")
-    assert form["type"] == "form" and names(form) == ["Lamp", "Color", "Duration, s", "Return"]
-    saved = sub(options, "momentary", {"Lamp": "light.kitchen", "Color": "white", "Duration, s": 8, "Return": "off"})
+    assert form["type"] == "form" and names(form) == ["lamp", "color", "duration", "return"]
+    saved = sub(options, "momentary", {"lamp": "light.kitchen", "color": "white", "duration": 8, "return": "off"})
     action = saved["data"]["config"]["momentary_actions"][0]
     assert action["lamp"] == "light.kitchen" and action["color"] == "white"
     assert action["duration"] == 8 and action["return"] == "off"
@@ -209,7 +206,7 @@ def test_options_can_edit_a_momentary_action_and_saving_the_zone_keeps_it():
 
     again = Options(saved["data"]["config"])
     sub(again, "init")
-    kept = sub(again, "zone", _fill(EN, name="Hall", lamps=["light.a"], presence=["binary_sensor.p"], timeout=15))
+    kept = sub(again, "zone", _fill(name="Hall", lamps=["light.a"], presence=["binary_sensor.p"], timeout=15))
     assert kept["data"]["config"]["zones"][0]["off_timeout"] == 15
     assert kept["data"]["config"]["momentary_actions"][0]["color"] == "white"
     assert kept["data"]["config"]["momentary_actions"][0]["trigger"]["entity_id"] == "binary_sensor.door"
@@ -217,7 +214,7 @@ def test_options_can_edit_a_momentary_action_and_saving_the_zone_keeps_it():
 
 def test_a_zone_without_lamps_or_presence_stays_on_the_form():
     flow = Wizard()
-    result = sub(flow, "zone", _fill(EN, lamps=[], presence=[]))
-    assert result["step_id"] == "zone" and result["errors"]["Lamps"] == "need_lamps"
-    assert result["errors"]["Presence sensors"] == "need_presence"
+    result = sub(flow, "zone", _fill(lamps=[], presence=[]))
+    assert result["step_id"] == "zone" and result["errors"]["lamps"] == "need_lamps"
+    assert result["errors"]["presence"] == "need_presence"
     assert result["type"] == "form"
