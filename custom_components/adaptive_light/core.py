@@ -282,3 +282,33 @@ def override_pause_until(
     m = m if m >= 1 else 30
     return now_ts + m * 60
 
+
+# ---------------------------------------------------------------- one rule (0.4)
+
+def rule_fires(rule: Mapping, *, lux: float | None, presence: bool, evening: bool) -> bool:
+    """Lux below the threshold opens the rule. Presence is a second trigger. A time window is a condition.
+
+    min and max are not read here: they bound the action, they do not start it.
+    """
+    if lux is None or not (float(lux) < float(rule["lux_below"])):
+        return False
+    if rule.get("presence") and not presence:
+        return False
+    if rule.get("window") == "evening" and not evening:
+        return False
+    return True
+
+
+def rule_brightness(rule: Mapping, *, now_pct: float, evening: bool) -> int:
+    """The action, scaled by gain and (in the evening) evening_mult, then bounded by min and max.
+
+    ``step`` adds ``pct`` to the brightness the lamp already has. ``target`` aims at ``pct``.
+    """
+    gain = float(rule.get("gain", 1))
+    mult = float(rule.get("evening_mult", 1)) if evening else 1.0
+    if rule.get("action") == "step":
+        raw = float(now_pct) + float(rule["pct"]) * gain * mult
+    else:
+        raw = float(rule["pct"]) * gain * mult
+    return int(round(clamp(raw, float(rule.get("min", 0)), float(rule.get("max", 100)))))
+

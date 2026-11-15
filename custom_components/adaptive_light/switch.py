@@ -10,7 +10,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     mgr = hass.data[DOMAIN][entry.entry_id]
     ents = [AdaptiveSwitch(mgr, "light_adaptive_enabled", "Light adaptive enabled", "enabled", None, hub_device()),
             AdaptiveSwitch(mgr, "light_adaptive_apply", "Light adaptive apply", "apply", None, hub_device()),
-            AdaptiveSwitch(mgr, "light_adaptive_scenarios", "Light scenarios (movie, evening, desk, fridge ...)", "scenarios", None, hub_device())]
+            AdaptiveSwitch(mgr, "light_adaptive_scenarios", "Light rules", "scenarios", None, hub_device())]
     ents += [AdaptiveSwitch(mgr, f"light_{k}_auto", f"Light {k} auto", "auto", k, zone_device(mgr, x["zone"]))
              for k, x in mgr.cfg.lamps.items()]
     async_add_entities(ents)

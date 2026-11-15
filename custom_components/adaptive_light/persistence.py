@@ -29,7 +29,7 @@ class PersistedState:
     last_set_ts: float = 0.0
     enabled: bool = False
     apply: bool = False
-    scenarios: bool = True                                               # behaviour scenarios (executors) on/off
+    scenarios: bool = True                                               # rules on/off; the controller keeps stepping lamps that are on
     auto: dict[str, bool] = field(default_factory=dict)                  # lamp key -> switch
 
     def to_dict(self) -> dict[str, Any]:

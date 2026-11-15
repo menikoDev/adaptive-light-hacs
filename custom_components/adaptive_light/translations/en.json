@@ -20,17 +20,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensors",
-          "media": "TV / monitors",
-          "sofa": "Sofa sensor",
-          "table": "Table sensor",
-          "fridge": "Fridge zone sensor",
-          "entrance": "Entrance sensor",
-          "carpet": "Carpet sensor",
-          "window_advice": "Window advice sensor",
-          "window_left": "Left window sensor",
-          "window_right": "Right window sensor",
-          "vent_mode": "Ventilation mode switch",
-          "color_store": "Colour store (input_text)"
+          "media": "TV / monitors"
         }
       },
       "zone": {
@@ -63,38 +53,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensors",
-          "media": "TV / monitors",
-          "sofa": "Sofa sensor",
-          "table": "Table sensor",
-          "fridge": "Fridge zone sensor",
-          "entrance": "Entrance sensor",
-          "carpet": "Carpet sensor",
-          "window_advice": "Window advice sensor",
-          "window_left": "Left window sensor",
-          "window_right": "Right window sensor",
-          "vent_mode": "Ventilation mode switch",
-          "color_store": "Colour store (input_text)"
-        }
-      },
-      "zone_extra_sensors": {
-        "title": "Extra sensors of {zone}",
-        "description": "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
-        "data": {
-          "radiation": "Outdoor radiation sensor",
-          "elevation": "Sun elevation sensor (daylight source)",
-          "illuminance": "Illuminance sensor",
-          "presence": "Presence sensors",
-          "media": "TV / monitors",
-          "sofa": "Sofa sensor",
-          "table": "Table sensor",
-          "fridge": "Fridge zone sensor",
-          "entrance": "Entrance sensor",
-          "carpet": "Carpet sensor",
-          "window_advice": "Window advice sensor",
-          "window_left": "Left window sensor",
-          "window_right": "Right window sensor",
-          "vent_mode": "Ventilation mode switch",
-          "color_store": "Colour store (input_text)"
+          "media": "TV / monitors"
         }
       },
       "zone_lamps": {
@@ -106,7 +65,7 @@
       },
       "group_add": {
         "title": "New lamp group in {zone}",
-        "description": "A group shares settings and can be used by scenarios. A lamp may be in several groups.",
+        "description": "A group shares settings. A lamp may be in several groups. A rule names the group it acts on.",
         "data": {
           "name": "Name",
           "lamps": "Lamps",
@@ -162,50 +121,6 @@
           "transition_s": "Transition, s"
         }
       },
-      "zone_bindings": {
-        "title": "Behaviour of {zone}",
-        "description": "Which groups and lamps the scenarios use. Choose Off to remove a binding. An empty field means the same: that scenario is off.",
-        "data": {
-          "top_group": "Top lights group",
-          "desk_group": "Desk lights group",
-          "wake_group": "Night wake group",
-          "fridge_lamp": "Fridge lamp",
-          "vent_left": "Ventilation blink, left lamp",
-          "vent_right": "Ventilation blink, right lamp",
-          "green_lamp": "Green fill lamp"
-        }
-      },
-      "zone_detect": {
-        "title": "On detection in {zone}",
-        "description": "Rules turn lamps on when a sensor trips and, after a delay, off when it clears. An empty list does nothing. The two templates are optional: they only fill the form, nothing is saved until you submit it.\n\n{rules}",
-        "menu_options": {
-          "detect_add": "Add a rule",
-          "detect_tpl_room": "Template: room presence → main group, adaptive, off 10 min after leave",
-          "detect_tpl_fridge": "Template: fridge sensor → one lamp, fixed 30% at 4500 K, off after 10 s",
-          "detect_delete": "Delete a rule",
-          "zone_menu": "Back",
-          "groups_menu": "Back"
-        }
-      },
-      "detect_add": {
-        "title": "Detection rule in {zone}",
-        "description": "One trigger, the lamps, and when to turn them off. Adaptive turns the lamps on and leaves the brightness to the controller. Fixed asks for a brightness and, if you want, a colour temperature. Off delay 0 does not turn the lamps off. A fridge sensor at 30%, 4500 K and 10 s still runs the fridge scenario.",
-        "data": {
-          "sensor": "Trigger",
-          "lamps": "Lamps",
-          "brightness": "Brightness",
-          "brightness_pct": "Brightness, %",
-          "color_temp_kelvin": "Colour temperature, K",
-          "off_delay_s": "Off delay, s"
-        }
-      },
-      "detect_delete": {
-        "title": "Delete a detection rule in {zone}",
-        "description": "The chosen rule is removed. The others stay.",
-        "data": {
-          "rule": "Rule"
-        }
-      },
       "pick_zone": {
         "title": "Pick a zone",
         "description": "",
@@ -247,7 +162,6 @@
         "title": "Adaptive Light",
         "menu_options": {
           "group_add": "Add a lamp group",
-          "zone_detect": "On detection",
           "more_zones": "Continue"
         }
       },
@@ -274,12 +188,9 @@
         "title": "Adaptive Light",
         "menu_options": {
           "zone_sensors": "Sensors",
-          "zone_extra_sensors": "Extra sensors",
           "zone_lamps": "Add lamps",
           "group_add": "Add a group",
           "zone_params": "Zone parameters",
-          "zone_bindings": "Behaviour scenarios",
-          "zone_detect": "On detection",
           "zone_remove": "Remove zone",
           "init": "Back"
         }
@@ -313,14 +224,9 @@
       "role_zone_mismatch": "Sensor role does not fit its zone",
       "bad_sensor_domain": "The entity type does not fit the role",
       "zone_needs_name": "Enter a zone name",
-      "bad_binding": "Invalid behaviour binding",
       "no_zones": "Add at least one zone",
       "group_needs_lamps": "Pick at least one lamp",
-      "bad_detect_rule": "Invalid detection rule",
-      "detect_needs_lamps": "Pick at least one lamp of this zone",
-      "detect_needs_sensor": "Pick the zone presence or one binary sensor",
-      "detect_needs_brightness": "Pick adaptive, or a fixed brightness",
-      "detect_no_fridge_sensor": "Add the fridge sensor first (extra sensors)"
+      "bad_rule": "Invalid rule"
     },
     "abort": {
       "single_instance_allowed": "Already configured."
@@ -346,17 +252,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensors",
-          "media": "TV / monitors",
-          "sofa": "Sofa sensor",
-          "table": "Table sensor",
-          "fridge": "Fridge zone sensor",
-          "entrance": "Entrance sensor",
-          "carpet": "Carpet sensor",
-          "window_advice": "Window advice sensor",
-          "window_left": "Left window sensor",
-          "window_right": "Right window sensor",
-          "vent_mode": "Ventilation mode switch",
-          "color_store": "Colour store (input_text)"
+          "media": "TV / monitors"
         }
       },
       "zone": {
@@ -389,38 +285,7 @@
           "elevation": "Sun elevation sensor (daylight source)",
           "illuminance": "Illuminance sensor",
           "presence": "Presence sensors",
-          "media": "TV / monitors",
-          "sofa": "Sofa sensor",
-          "table": "Table sensor",
-          "fridge": "Fridge zone sensor",
-          "entrance": "Entrance sensor",
-          "carpet": "Carpet sensor",
-          "window_advice": "Window advice sensor",
-          "window_left": "Left window sensor",
-          "window_right": "Right window sensor",
-          "vent_mode": "Ventilation mode switch",
-          "color_store": "Colour store (input_text)"
-        }
-      },
-      "zone_extra_sensors": {
-        "title": "Extra sensors of {zone}",
-        "description": "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
-        "data": {
-          "radiation": "Outdoor radiation sensor",
-          "elevation": "Sun elevation sensor (daylight source)",
-          "illuminance": "Illuminance sensor",
-          "presence": "Presence sensors",
-          "media": "TV / monitors",
-          "sofa": "Sofa sensor",
-          "table": "Table sensor",
-          "fridge": "Fridge zone sensor",
-          "entrance": "Entrance sensor",
-          "carpet": "Carpet sensor",
-          "window_advice": "Window advice sensor",
-          "window_left": "Left window sensor",
-          "window_right": "Right window sensor",
-          "vent_mode": "Ventilation mode switch",
-          "color_store": "Colour store (input_text)"
+          "media": "TV / monitors"
         }
       },
       "zone_lamps": {
@@ -432,7 +297,7 @@
       },
       "group_add": {
         "title": "New lamp group in {zone}",
-        "description": "A group shares settings and can be used by scenarios. A lamp may be in several groups.",
+        "description": "A group shares settings. A lamp may be in several groups. A rule names the group it acts on.",
         "data": {
           "name": "Name",
           "lamps": "Lamps",
@@ -488,50 +353,6 @@
           "transition_s": "Transition, s"
         }
       },
-      "zone_bindings": {
-        "title": "Behaviour of {zone}",
-        "description": "Which groups and lamps the scenarios use. Choose Off to remove a binding. An empty field means the same: that scenario is off.",
-        "data": {
-          "top_group": "Top lights group",
-          "desk_group": "Desk lights group",
-          "wake_group": "Night wake group",
-          "fridge_lamp": "Fridge lamp",
-          "vent_left": "Ventilation blink, left lamp",
-          "vent_right": "Ventilation blink, right lamp",
-          "green_lamp": "Green fill lamp"
-        }
-      },
-      "zone_detect": {
-        "title": "On detection in {zone}",
-        "description": "Rules turn lamps on when a sensor trips and, after a delay, off when it clears. An empty list does nothing. The two templates are optional: they only fill the form, nothing is saved until you submit it.\n\n{rules}",
-        "menu_options": {
-          "detect_add": "Add a rule",
-          "detect_tpl_room": "Template: room presence → main group, adaptive, off 10 min after leave",
-          "detect_tpl_fridge": "Template: fridge sensor → one lamp, fixed 30% at 4500 K, off after 10 s",
-          "detect_delete": "Delete a rule",
-          "zone_menu": "Back",
-          "groups_menu": "Back"
-        }
-      },
-      "detect_add": {
-        "title": "Detection rule in {zone}",
-        "description": "One trigger, the lamps, and when to turn them off. Adaptive turns the lamps on and leaves the brightness to the controller. Fixed asks for a brightness and, if you want, a colour temperature. Off delay 0 does not turn the lamps off. A fridge sensor at 30%, 4500 K and 10 s still runs the fridge scenario.",
-        "data": {
-          "sensor": "Trigger",
-          "lamps": "Lamps",
-          "brightness": "Brightness",
-          "brightness_pct": "Brightness, %",
-          "color_temp_kelvin": "Colour temperature, K",
-          "off_delay_s": "Off delay, s"
-        }
-      },
-      "detect_delete": {
-        "title": "Delete a detection rule in {zone}",
-        "description": "The chosen rule is removed. The others stay.",
-        "data": {
-          "rule": "Rule"
-        }
-      },
       "pick_zone": {
         "title": "Pick a zone",
         "description": "",
@@ -573,7 +394,6 @@
         "title": "Adaptive Light",
         "menu_options": {
           "group_add": "Add a lamp group",
-          "zone_detect": "On detection",
           "more_zones": "Continue"
         }
       },
@@ -600,12 +420,9 @@
         "title": "Adaptive Light",
         "menu_options": {
           "zone_sensors": "Sensors",
-          "zone_extra_sensors": "Extra sensors",
           "zone_lamps": "Add lamps",
           "group_add": "Add a group",
           "zone_params": "Zone parameters",
-          "zone_bindings": "Behaviour scenarios",
-          "zone_detect": "On detection",
           "zone_remove": "Remove zone",
           "init": "Back"
         }
@@ -639,14 +456,9 @@
       "role_zone_mismatch": "Sensor role does not fit its zone",
       "bad_sensor_domain": "The entity type does not fit the role",
       "zone_needs_name": "Enter a zone name",
-      "bad_binding": "Invalid behaviour binding",
       "no_zones": "Add at least one zone",
       "group_needs_lamps": "Pick at least one lamp",
-      "bad_detect_rule": "Invalid detection rule",
-      "detect_needs_lamps": "Pick at least one lamp of this zone",
-      "detect_needs_sensor": "Pick the zone presence or one binary sensor",
-      "detect_needs_brightness": "Pick adaptive, or a fixed brightness",
-      "detect_no_fridge_sensor": "Add the fridge sensor first (extra sensors)"
+      "bad_rule": "Invalid rule"
     }
   },
   "selector": {
@@ -654,12 +466,6 @@
       "options": {
         "yes": "Yes",
         "no": "No"
-      }
-    },
-    "detect_brightness": {
-      "options": {
-        "adaptive": "Adaptive (the controller sets the brightness)",
-        "fixed": "Fixed"
       }
     }
   },

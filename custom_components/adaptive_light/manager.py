@@ -1,4 +1,4 @@
-"""Runtime glue between Home Assistant and core.py / executors.py for any number of zones and lamps.
+"""Runtime glue between Home Assistant and core.py for any number of zones and lamps.
 
 Uses only hass.states / hass.services, so tests can drive it with a fake hass.
 """
@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Any, Callable
 
 from . import core, params as P
-from .executors import Bind, Ctx
 from .model import Config, normalise, validate
 from .persistence import PersistedState, SAVE_DELAY_S
 
@@ -42,7 +41,6 @@ class AdaptiveLightManager:
         self._listeners: list[Callable[[], None]] = []
         self._own_context_ids: set[str] = set()
         self._unsub: list[Callable[[], None]] = []
-        self.executors = None
         self.set_config(cfg)
 
     # ------------------------------------------------------------ config
@@ -143,8 +141,6 @@ class AdaptiveLightManager:
             self.state.apply = value
         elif which == "scenarios":
             self.state.scenarios = value
-            if not value and self.executors:
-                self.executors.cancel_all()
         self.mark_dirty()
         self._notify()
 
@@ -255,7 +251,8 @@ class AdaptiveLightManager:
             zone = self.cfg.lamps[key]["zone"]
             lp = self._lamp_p[key]
             fridge = self._st(self.cfg.sensor("fridge", zone))
-            t = self.target(key)
+            ruled = self._rule_target(key)
+            t = self.target(key) if ruled is None else ruled
             mode = self.lamp_mode(key)
             d = core.decide_lamp(
                 key, entity=self.cfg.entity_of(key), lamp=self.lamp_state(key), target_pct=-1 if t is None else t,
@@ -339,35 +336,39 @@ class AdaptiveLightManager:
         self.mark_dirty()
         self.recompute()
 
-    # ------------------------------------------------------------ executors context
-    def exec_ctx(self, zone: str) -> Ctx:
-        cfg = self.cfg
-        keys = cfg.lamps_in_zone(zone)
+    def zone_occupied(self, zone: str) -> bool:
+        return any((st := self._st(e)) is not None and st.state == "on" for e in self.cfg.sensors("presence", zone))
 
-        def grp(slot: str) -> tuple[str, ...]:
-            g = cfg.binding(zone, slot)
-            return tuple(cfg.group_lamps(g)) if g else ()
+    def zone_evening(self, zone: str) -> bool:
+        if self.zone_mode(zone) == "Evening":
+            return True
+        return core.evening_quiet(self._now().hour, self._flat_zone[zone])
 
-        b = Bind(top=grp("top_group"), desk=grp("desk_group"), wake=grp("wake_group"), fridge=cfg.binding(zone, "fridge_lamp"),
-                 vent_left=cfg.binding(zone, "vent_left"), vent_right=cfg.binding(zone, "vent_right"),
-                 green=cfg.binding(zone, "green_lamp"))
-        zv = self.values["zones"].get(zone, {})
-        scene_ent = self._zone_p[zone]["scene_entity"]
-        return Ctx(
-            auto=dict(self.state.auto), bind=b,
-            lamp_params={k: {"work_hours_only": self._lamp_p[k]["work_hours_only"], "legacy_ratio": self._lamp_p[k]["legacy_ratio"]}
-                         for k in keys},
-            mode=self.zone_mode(zone), lux=self.effective_lux(zone), hour=self._now().hour, now_ts=self._now().timestamp(),
-            last_set_ts=self.state.last_set_ts, enabled=self.state.enabled, apply=self.state.apply,
-            lamps={k: self.lamp_full(k) for k in keys}, targets={k: self.target(k) for k in keys},
-            scene=self._entity_state(scene_ent, "") if scene_ent else None,
-            need=zv.get("need"), ambient=zv.get("ambient"), daylight=self.values.get("daylight_factor"))
+    def _rule_target(self, key: str) -> int | None:
+        """Brightness a firing rule asks for, or None. Off lamps are left to the controller, which does not turn them on."""
+        if not self.state.scenarios:
+            return None
+        lamp = self.lamp_state(key)
+        if not lamp.on:
+            return None
+        zone = self.cfg.lamps[key]["zone"]
+        groups = {g["key"] for g in self.cfg.groups_of(key)}
+        lux = self.effective_lux(zone)
+        presence = self.zone_occupied(zone)
+        evening = self.zone_evening(zone)
+        now_pct = int(round((lamp.brightness or 0) / 255 * 100))
+        for rule in self.cfg.raw.get("rules") or []:
+            if rule.get("zone") != zone or rule.get("group") not in groups:
+                continue
+            if core.rule_fires(rule, lux=lux, presence=presence, evening=evening):
+                return core.rule_brightness(rule, now_pct=now_pct, evening=evening)
+        return None
 
     # ------------------------------------------------------------ lifecycle
     def watched_entities(self) -> list[str]:
         ents = {x["entity"] for x in self.cfg.raw["lamps"]}
         for s in self.cfg.raw["sensors"]:
-            if s["role"] in ("illuminance", "radiation", "elevation"):
+            if s["role"] in ("illuminance", "radiation", "elevation", "presence"):
                 ents.add(s["entity"])
         for z in self.cfg.zone_order:
             for n in ("mode_entity", "scene_entity"):
@@ -408,15 +409,9 @@ class AdaptiveLightManager:
         self._unsub.append(async_track_state_change_event(self.hass, self.watched_entities(), _changed))
         self._unsub.append(async_track_state_change_event(self.hass, list(lamp_ents), _lamp))
         self._unsub.append(async_track_time_interval(self.hass, _tick, timedelta(minutes=1)))
-        from .exec_runtime import ExecutorRuntime
-        self.executors = ExecutorRuntime(self)
-        self.executors.start()
         self.recompute()
 
     def async_stop(self) -> None:
-        if self.executors:
-            self.executors.stop()
-            self.executors = None
         for u in self._unsub:
             u()
         self._unsub.clear()

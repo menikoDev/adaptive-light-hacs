@@ -10,7 +10,7 @@ def _load_pure_package():
     pkg = types.ModuleType("adaptive_light")
     pkg.__path__ = [os.path.join(ROOT, "custom_components", "adaptive_light")]
     sys.modules["adaptive_light"] = pkg
-    for name in ("params", "model", "core", "persistence", "executors", "exec_runtime", "manager", "ids", "flow_ops", "areas", "draft"):
+    for name in ("params", "model", "core", "persistence", "manager", "ids", "flow_ops", "areas", "draft"):
         spec = importlib.util.spec_from_file_location(f"adaptive_light.{name}", os.path.join(pkg.__path__[0], f"{name}.py"))
         mod = importlib.util.module_from_spec(spec)
         sys.modules[f"adaptive_light.{name}"] = mod

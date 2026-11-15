@@ -1,6 +1,7 @@
-"""A zone without an illuminance sensor (0.3.0): daylight-only estimate for the formulas, executors and the controller,
+"""A zone without an illuminance sensor (0.3.0): daylight-only estimate for the formulas, rules and the controller,
 no openness/trust."""
-from adaptive_light import core, executors as ex, flow_ops as ops
+from adaptive_light import core, flow_ops as ops
+from adaptive_light.model import example_rules
 from adaptive_light.model import validate
 from test_manager_zones import St, make, run
 from helpers_cfg import two_rooms
@@ -82,13 +83,12 @@ def test_openness_of_a_zone_without_sensor_never_moves_and_does_not_distort_need
     assert m.openness["bedroom"].value == 10.0                           # frozen, not used
 
 
-def test_executors_get_the_estimated_lux():
+def test_a_rule_sees_the_estimated_lux():
+    task = example_rules()[0]                                            # below 40 lx
     m, _ = make_bare(rad=300, mode="Evening")                            # daylight 100 -> estimated 100 lx
-    assert m.exec_ctx("bedroom").lux == 100.0
+    assert m.effective_lux("bedroom") == 100.0
+    assert not core.rule_fires(task, lux=m.effective_lux("bedroom"), presence=True, evening=True)
     m2, _ = make_bare(rad=0, mode="Evening")
-    assert m2.exec_ctx("bedroom").lux == 0.0
-    c2, c1 = m2.exec_ctx("bedroom"), m.exec_ctx("bedroom")
-    c2.mode = c1.mode = "Evening"          # the mode entity belongs to the living room zone in this fixture
-    assert ex.evening_allowed(c2, presence=True, group_off=True)        # dark by estimate: evening light may start
-    assert not ex.evening_allowed(c1, presence=True, group_off=True)    # bright by estimate: it may not
-    assert m.exec_ctx("living_room").lux == 20.0                         # zones with a sensor keep the measured value
+    assert m2.effective_lux("bedroom") == 0.0
+    assert core.rule_fires(task, lux=m2.effective_lux("bedroom"), presence=False, evening=False)
+    assert m.effective_lux("living_room") == 20.0                        # zones with a sensor keep the measured value

@@ -1,19 +1,21 @@
-"""Configuration model: zones, sensors (with role and zone), lamps, groups, parameter inheritance.
+"""Configuration model: zones, lamp groups, and one rule type.
 
 Pure data + validation, no Home Assistant imports. The config flow edits exactly this structure;
 the runtime reads it through ``Config``.
 
     {
-      "version": 2,
+      "version": 3,
       "params":  {name: value},                                  # global overrides
       "sensors": [{"entity", "role", "zone"}],                   # zone "" = global (radiation, elevation)
-      "zones":   [{"key", "name", "params", "bindings", "detect_rules"?, "area_id"?}],
-                                                                 # one per room, the first is the primary one;
-                                                                 # area_id = Home Assistant Area it was created from;
-                                                                 # detect_rules turn lamps on from a sensor and off after a delay
-      "lamps":   [{"key", "entity", "zone", "name", "params"}],  # any number
-      "groups":  [{"key", "name", "zone", "lamps": [keys], "params", "share_pause"}]
+      "zones":   [{"key", "name", "params", "area_id"?}],        # one per room, the first is the primary one
+      "lamps":   [{"key", "entity", "zone", "name", "params"}],
+      "groups":  [{"key", "name", "zone", "lamps": [keys], "params", "share_pause"}],
+      "rules":   [rule]                                          # one shape; the examples differ only by numbers
     }
+
+A rule is zone, group, lux threshold, an action (step or target) and the coefficients
+min, max, gain, evening_mult. Presence is a trigger next to lux. A time window is a condition.
+min and max bound the action; they do not start it.
 """
 from __future__ import annotations
 
@@ -24,31 +26,52 @@ from typing import Any
 
 from . import params as P
 
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
 
 GLOBAL_ROLES = ("radiation", "elevation")
-ZONE_ROLES = ("illuminance", "presence", "media", "sofa", "table", "fridge", "entrance", "carpet",
-              "window_advice", "window_left", "window_right", "vent_mode", "color_store")
+ZONE_ROLES = ("illuminance", "presence", "media")
 ROLES = GLOBAL_ROLES + ZONE_ROLES
 ROLE_DOMAINS = {
     "illuminance": ("sensor",), "presence": ("binary_sensor",), "radiation": ("sensor",), "elevation": ("sensor",),
     "media": ("media_player", "binary_sensor", "switch", "remote"),
-    "sofa": ("binary_sensor",), "table": ("binary_sensor",), "fridge": ("binary_sensor",), "entrance": ("binary_sensor",),
-    "carpet": ("binary_sensor",), "window_advice": ("sensor",), "window_left": ("sensor",), "window_right": ("sensor",),
-    "vent_mode": ("input_boolean", "switch", "binary_sensor"), "color_store": ("input_text",),
 }
-BINDING_SLOTS = {            # slot -> kind of key it takes
-    "top_group": "group", "desk_group": "group", "wake_group": "group",
-    "fridge_lamp": "lamp", "vent_left": "lamp", "vent_right": "lamp", "green_lamp": "lamp",
+# Roles and binding slots that 0.4 no longer stores. Loaded configs drop them.
+_DROPPED_ROLES = ("sofa", "table", "fridge", "entrance", "carpet", "window_advice", "window_left", "window_right",
+                  "vent_mode", "color_store")
+
+# One rule. Every example has these fields; only the numbers change.
+RULE_FIELDS = ("zone", "group", "lux_below", "action", "pct", "min", "max", "gain", "evening_mult", "presence", "window")
+RULE_ACTIONS = ("step", "target")
+RULE_WINDOWS = ("", "evening")
+_RULE_DEFAULTS = {
+    "zone": "", "group": "", "lux_below": 0, "action": "target", "pct": 0,
+    "min": 0, "max": 100, "gain": 1, "evening_mult": 1, "presence": False, "window": "",
 }
-BINDING_OFF = "__off__"       # explicit "scenario off" in the bindings form; never stored (empty means the same)
-ZONE_PRESENCE = "zone_presence"  # detection-rule trigger: the OR of the zone's presence sensors
-DETECT_BRIGHTNESS = ("adaptive", "fixed")
+
+
+def make_rule(**over) -> dict:
+    """One rule. Unknown names are refused: the field list is frozen."""
+    extra = set(over) - set(RULE_FIELDS)
+    if extra:
+        raise ConfigError("bad_rule", "fields " + ", ".join(sorted(extra)))
+    rule = dict(_RULE_DEFAULTS)
+    rule.update(over)
+    return rule
+
+
+def example_rules() -> list[dict]:
+    """The three cases of the frozen 0.4 scheme. Data only: the same rule, different numbers."""
+    return [
+        make_rule(zone="work_station", group="task", lux_below=40, action="target", pct=70, max=80),
+        make_rule(zone="living_room", group="fridge_glow", lux_below=15, action="step", pct=20, max=40,
+                  presence=True, window="evening"),
+        make_rule(zone="living_room", group="accent", lux_below=30, action="target", pct=25, evening_mult=0.5),
+    ]
 
 
 def empty_config() -> dict:
-    return {"version": CONFIG_VERSION, "params": {}, "sensors": [], "zones": [], "lamps": [], "groups": []}
+    return {"version": CONFIG_VERSION, "params": {}, "sensors": [], "zones": [], "lamps": [], "groups": [], "rules": []}
 
 
 class ConfigError(ValueError):
@@ -108,88 +131,55 @@ def validate(cfg: dict) -> list[ConfigError]:
         dom = str(s.get("entity", "")).split(".", 1)[0]
         if dom not in ROLE_DOMAINS[role]:
             errs.append(ConfigError("bad_sensor_domain", f"{s.get('entity')} as {role}"))
-    for z in cfg.get("zones", []):
-        for slot, key in (z.get("bindings") or {}).items():
-            kind = BINDING_SLOTS.get(slot)
-            if kind is None:
-                errs.append(ConfigError("bad_binding", slot))
-            elif key and kind == "group" and not any(g["key"] == key and g["zone"] == z["key"] for g in cfg["groups"]):
-                errs.append(ConfigError("bad_binding", f"{slot} -> {key}"))
-            elif key and kind == "lamp" and lamp_zone.get(key) != z["key"]:
-                errs.append(ConfigError("bad_binding", f"{slot} -> {key}"))
-        seen_rules: set[str] = set()
-        for rule in z.get("detect_rules") or []:
-            if not isinstance(rule, dict):
-                errs.append(ConfigError("bad_detect_rule", "not an object"))
-                continue
-            rid = str(rule.get("id") or "")
-            if not KEY_RE.match(rid) or rid in seen_rules:
-                errs.append(ConfigError("bad_detect_rule", f"id {rid!r}"))
-            seen_rules.add(rid)
-            sensor = rule.get("sensor")
-            if sensor != ZONE_PRESENCE and not str(sensor or "").startswith("binary_sensor."):
-                errs.append(ConfigError("bad_detect_rule", f"sensor {sensor!r}"))
-            lamps = list(rule.get("lamps") or [])
-            if not lamps:
-                errs.append(ConfigError("bad_detect_rule", "no lamps"))
-            for lk in lamps:
-                if lamp_zone.get(lk) != z["key"]:
-                    errs.append(ConfigError("bad_detect_rule", f"lamp {lk}"))
-            if rule.get("brightness") not in DETECT_BRIGHTNESS:
-                errs.append(ConfigError("bad_detect_rule", "brightness"))
-            elif rule.get("brightness") == "fixed":
-                pct = rule.get("brightness_pct")
-                if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 1 <= int(pct) <= 100:
-                    errs.append(ConfigError("bad_detect_rule", "brightness_pct"))
-            delay = rule.get("off_delay_s", 0)
-            if isinstance(delay, bool) or not isinstance(delay, (int, float)) or int(delay) < 0:
-                errs.append(ConfigError("bad_detect_rule", "off_delay_s"))
-            kelvin = rule.get("color_temp_kelvin")
-            if kelvin not in (None, "") and (isinstance(kelvin, bool) or not isinstance(kelvin, (int, float))
-                                              or not 1000 <= int(kelvin) <= 20000):
-                errs.append(ConfigError("bad_detect_rule", "color_temp_kelvin"))
+    groups_of = {}
+    for g in cfg.get("groups", []):
+        groups_of.setdefault(g.get("zone"), set()).add(g.get("key"))
+    for rule in cfg.get("rules") or []:
+        if not isinstance(rule, dict) or set(rule) - set(RULE_FIELDS):
+            errs.append(ConfigError("bad_rule", "fields"))
+            continue
+        zone, group = rule.get("zone"), rule.get("group")
+        if zone not in zones or group not in groups_of.get(zone, ()):
+            errs.append(ConfigError("bad_rule", f"{zone}/{group}"))
+        if rule.get("action") not in RULE_ACTIONS or rule.get("window") not in RULE_WINDOWS:
+            errs.append(ConfigError("bad_rule", "action"))
+        if not isinstance(rule.get("presence"), bool):
+            errs.append(ConfigError("bad_rule", "presence"))
+        for name in ("lux_below", "pct", "min", "max", "gain", "evening_mult"):
+            v = rule.get(name)
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                errs.append(ConfigError("bad_rule", name))
+        else:
+            if isinstance(rule.get("min"), (int, float)) and isinstance(rule.get("max"), (int, float)):
+                if rule["min"] > rule["max"]:
+                    errs.append(ConfigError("bad_rule", "min"))
     if not cfg.get("zones"):
         errs.append(ConfigError("no_zones"))
     return errs
 
 
-def _clean_detect_rules(rules, zone_lamps: set[str]) -> list[dict]:
-    """Drop rules that cannot run. Lamps that left the zone are removed; a rule with none left is dropped."""
-    out: list[dict] = []
-    seen: set[str] = set()
-    for rule in rules or []:
-        if not isinstance(rule, dict):
-            continue
-        rid = str(rule.get("id") or "")
-        if not KEY_RE.match(rid) or rid in seen:
-            continue
-        lamps = [k for k in dict.fromkeys(rule.get("lamps") or []) if k in zone_lamps]
-        sensor, brightness = rule.get("sensor"), rule.get("brightness")
-        if not lamps or brightness not in DETECT_BRIGHTNESS:
-            continue
-        if sensor != ZONE_PRESENCE and not str(sensor or "").startswith("binary_sensor."):
-            continue
-        try:
-            delay = int(rule.get("off_delay_s") or 0)
-        except (TypeError, ValueError):
-            continue
-        if delay < 0:
-            continue
-        item: dict = {"id": rid, "sensor": sensor, "lamps": lamps, "brightness": brightness, "off_delay_s": delay}
-        if brightness == "fixed":
+def _num(v: Any) -> int | float:
+    f = float(v)
+    return int(f) if f == int(f) else f
+
+
+def _clean_rule(rule: dict) -> dict:
+    """Fill the frozen defaults. Extra names stay so validation can refuse them."""
+    item = {k: rule[k] if k in rule else v for k, v in _RULE_DEFAULTS.items()}
+    for k, v in rule.items():
+        if k not in item:
+            item[k] = v
+    for name in ("lux_below", "pct", "min", "max", "gain", "evening_mult"):
+        if name in rule and not isinstance(rule[name], bool):
             try:
-                pct = int(rule["brightness_pct"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            item["brightness_pct"] = pct
-            if rule.get("color_temp_kelvin") not in (None, ""):
-                try:
-                    item["color_temp_kelvin"] = int(rule["color_temp_kelvin"])
-                except (TypeError, ValueError):
-                    continue
-        seen.add(rid)
-        out.append(item)
-    return out
+                item[name] = _num(rule[name])
+            except (TypeError, ValueError):
+                item[name] = rule[name]
+    if "presence" in rule:
+        item["presence"] = rule["presence"] if isinstance(rule["presence"], bool) else rule["presence"]
+    if item.get("window") is None:
+        item["window"] = ""
+    return item
 
 
 def normalise(cfg: dict) -> dict:
@@ -198,16 +188,13 @@ def normalise(cfg: dict) -> dict:
     c["version"] = CONFIG_VERSION
     c["params"] = P.clean_overrides(c.get("params", {}), P.G)
     c.setdefault("sensors", [])
+    c["sensors"] = [s for s in c["sensors"] if s.get("role") not in _DROPPED_ROLES]
     c.setdefault("zones", []); c.setdefault("lamps", []); c.setdefault("groups", [])
     for z in c["zones"]:
         z["params"] = P.clean_overrides(z.get("params", {}), P.Z)
         z["name"] = z.get("name") or z["key"]
-        z["bindings"] = {k: v for k, v in (z.get("bindings") or {}).items() if v and v != BINDING_OFF}
-        rules = _clean_detect_rules(z.get("detect_rules"), {x["key"] for x in c["lamps"] if x.get("zone") == z.get("key")})
-        if rules:
-            z["detect_rules"] = rules
-        else:
-            z.pop("detect_rules", None)
+        z.pop("bindings", None)
+        z.pop("detect_rules", None)
     for x in c["lamps"]:
         x["params"] = P.clean_overrides(x.get("params", {}), P.L)
         x["name"] = x.get("name") or x["key"]
@@ -216,6 +203,7 @@ def normalise(cfg: dict) -> dict:
         g["name"] = g.get("name") or g["key"]
         g["lamps"] = list(dict.fromkeys(g.get("lamps", [])))
         g["share_pause"] = bool(g.get("share_pause", False))
+    c["rules"] = [_clean_rule(r) for r in (c.get("rules") or []) if isinstance(r, dict)]
     return c
 
 
@@ -292,11 +280,8 @@ class Config:
     def entity_of(self, lamp_key: str) -> str:
         return self.lamps[lamp_key]["entity"]
 
-    def binding(self, zone: str, slot: str) -> str | None:
-        return self.zones[zone].get("bindings", {}).get(slot) or None
-
-    def detect_rules(self, zone: str) -> list[dict]:
-        return list(self.zones[zone].get("detect_rules") or [])
+    def rules_for(self, zone: str, group: str) -> list[dict]:
+        return [r for r in self.raw.get("rules") or [] if r.get("zone") == zone and r.get("group") == group]
 
     def group_lamps(self, group_key: str) -> list[str]:
         return list(self.groups[group_key]["lamps"])
@@ -315,24 +300,11 @@ def plan_living_room() -> dict:
             *[{"entity": e, "role": r, "zone": "living_room"} for r, e in (
                 ("illuminance", "sensor.living_room_presence_sensor_light_sensor_light_level"),
                 ("presence", "binary_sensor.living_room_presence_sensor"),
-                ("media", "media_player.living_room_tv"),
-                ("sofa", "binary_sensor.living_room_presence_sensor_sofa_zone"),
-                ("table", "binary_sensor.living_room_presence_right_table_zone"),
-                ("fridge", "binary_sensor.living_room_presence_sensor_refrigerator_zone"),
-                ("entrance", "binary_sensor.living_room_presence_sensor_entrance_zone"),
-                ("carpet", "binary_sensor.living_room_presence_sensor_carpet_zone"),
-                ("window_advice", "sensor.general_graz_meteo_station_window_open_advice"),
-                ("window_left", "sensor.living_room_left_window_open_percentage"),
-                ("window_right", "sensor.living_room_right_window_open_percentage"),
-                ("vent_mode", "input_boolean.living_room_fan_vent_mode"),
-                ("color_store", "input_text.living_room_top_lamps_color"))],
+                ("media", "media_player.living_room_tv"))],
         ],
         "zones": [{"key": "living_room", "name": "Living room",
                    "params": {"mode_entity": "input_select.living_room_light_mode",
-                              "scene_entity": "input_select.work_station_desk_light_scene"},
-                   "bindings": {"top_group": "top", "desk_group": "desk_group", "wake_group": "wake",
-                                "fridge_lamp": "bottom", "vent_left": "top_right", "vent_right": "bottom",
-                                "green_lamp": "top_left"}}],
+                              "scene_entity": "input_select.work_station_desk_light_scene"}}],
         "lamps": [
             lamp("top_left", "light.living_room_top_lamp_top_left", prof(10, 60, 0.5, 0.1, ctrl_modes="Day,Evening", fridge_block=1)),
             lamp("top_right", "light.living_room_top_lamp_top_right", prof(10, 60, 0.5, 0.1, ctrl_modes="Day,Evening", fridge_block=1)),
@@ -346,5 +318,6 @@ def plan_living_room() -> dict:
             {"key": "desk_group", "name": "Desk", "zone": "living_room", "lamps": ["desk", "stick"], "params": {}},
             {"key": "wake", "name": "Night wake", "zone": "living_room", "lamps": ["bottom", "top_left"], "params": {}},
         ],
+        "rules": [],
     }
     return normalise(cfg)

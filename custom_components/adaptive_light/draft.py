@@ -14,8 +14,7 @@ DRAFT_VERSION = 1
 DRAFT_MAX_AGE_S = 7 * 86400
 DRAFT_KEY = "adaptive_light_wizard_draft"
 # steps worth resuming at; the entry points of the wizard are not (nothing was entered yet)
-RESUMABLE = ("zone", "zone_name", "zone_sensors", "zone_lamps", "groups_menu", "group_add", "zone_detect",
-             "detect_add", "detect_delete", "more_zones", "params", "save")
+RESUMABLE = ("zone", "zone_name", "zone_sensors", "zone_lamps", "groups_menu", "group_add", "more_zones", "params", "save")
 
 
 def pack(cfg: dict, step: str, zone: str, now_ts: float) -> dict[str, Any]:
@@ -47,7 +46,7 @@ def unpack(data: Any, now_ts: float, max_age_s: float = DRAFT_MAX_AGE_S) -> dict
         step = "more_zones" if cfg.get("zones") else "global_sensors"
     if not isinstance(zone, str) or zone not in zones:
         zone = ""
-    if step in ("zone_sensors", "zone_lamps", "groups_menu", "group_add", "zone_detect", "detect_add", "detect_delete") and not zone:
+    if step in ("zone_sensors", "zone_lamps", "groups_menu", "group_add") and not zone:
         step = "more_zones" if zones else "global_sensors"
     return {"config": copy.deepcopy(cfg), "step": step, "zone": zone, "ts": ts}
 

@@ -25,8 +25,11 @@ def test_empty_and_broken_configs_are_rejected():
     assert "duplicate_lamp_entity" in codes(c)
     c = two_rooms(); c["sensors"].append({"entity": "light.x", "role": "illuminance", "zone": "bedroom"})
     assert "bad_sensor_domain" in codes(c)
-    c = two_rooms(); c["zones"][1]["bindings"] = {"fridge_lamp": "top_left"}
-    assert "bad_binding" in codes(c)
+    c = two_rooms(); c["sensors"].append({"entity": "binary_sensor.sofa", "role": "sofa", "zone": "living_room"})
+    assert "sofa" not in {s["role"] for s in normalise(c)["sensors"]}
+    from adaptive_light.model import make_rule
+    c = two_rooms(); c["rules"] = [make_rule(zone="bedroom", group="missing")]
+    assert "bad_rule" in codes(c)
     c = two_rooms(); c["lamps"][-1]["zone"] = "nowhere"
     assert "unknown_zone" in codes(c)
 
@@ -76,7 +79,7 @@ def test_ops_remove_cascade_and_unique_keys():
     assert [z["key"] for z in c["zones"]] == ["living_room"] and not any(x["zone"] == "bedroom" for x in c["lamps"])
     assert validate(normalise(c)) == []
     ops.remove_group(c, "top")
-    assert "top_group" not in c["zones"][0]["bindings"]
+    assert "top" not in {g["key"] for g in c["groups"]} and validate(normalise(c)) == []
 
 
 def test_entity_ids_primary_keeps_plan_names_other_zone_prefixed():
