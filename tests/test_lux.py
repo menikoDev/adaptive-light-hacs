@@ -1,5 +1,6 @@
 """A zone turns lamps on only when someone is present and the estimate is below the threshold."""
 from adaptive_light.manager import AdaptiveLightManager
+from adaptive_light.persistence import MemoryStore
 
 from test_presence import Home, _saw, run
 
@@ -134,6 +135,82 @@ def test_manual_off_and_the_timeout_still_work():
     assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.b"]})]
     _saw(mgr, home, "light.b", "off")
     assert "light.b" not in mgr.manual_off
+
+
+def test_already_occupied_and_below_threshold_turns_on_without_a_presence_edge():
+    home = Home()
+    home.states.set("sensor.room", "46")
+    cfg = raw(lux="sensor.room", threshold=100, timeout=300)
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    mgr = AdaptiveLightManager(home, cfg, now=home.now)
+    mgr.note_lamp_change("light.a", "off")
+    mgr.note_lamp_change("light.b", "off")
+    assert mgr.manual_off == set()
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+    assert set(home.services.calls[0][2]) == {"entity_id"}
+
+
+def test_estimate_dropping_below_threshold_turns_on_while_still_occupied():
+    home = Home()
+    home.states.set("sensor.room", "150")
+    cfg = raw(lux="sensor.room", threshold=100)
+    mgr = ready(home, cfg, lamps="on")
+    assert run(mgr.apply("hall")) == "lux"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    mgr.note_lamp_change("light.a", "off")
+    mgr.note_lamp_change("light.b", "off")
+    assert mgr.manual_off == set()
+    home.services.calls.clear()
+    home.states.set("sensor.room", "46")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+
+def test_a_manual_off_saved_before_the_fix_does_not_keep_the_lamps_off():
+    home = Home()
+    home.states.set("sensor.room", "46")
+    cfg = raw(lux="sensor.room", threshold=100, timeout=300)
+    store = MemoryStore({
+        "version": 3,
+        "enabled": {"hall": True},
+        "manual_off": ["light.a", "light.b"],
+        "night_hold": [],
+    })
+    mgr = ready(home, cfg)
+    mgr.store = store
+    run(mgr.async_load())
+    assert mgr.manual_off == set()
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+
+def test_a_real_manual_off_saved_after_the_fix_still_blocks():
+    home = Home()
+    home.states.set("sensor.room", "46")
+    cfg = raw(lux="sensor.room", threshold=100)
+    store = MemoryStore()
+    mgr = ready(home, cfg, lamps="on")
+    mgr.store = store
+    _saw(mgr, home, "light.a", "off")
+    assert mgr.manual_off == {"light.a"}
+    saved = mgr._snapshot()
+    assert saved["manual_off_epoch"] == 2 and saved["manual_off"] == ["light.a"]
+
+    again = Home()
+    again.states.set("sensor.room", "46")
+    again.states.set("binary_sensor.p", "on")
+    again.states.set("light.a", "off")
+    again.states.set("light.b", "off")
+    restored = AdaptiveLightManager(again, cfg, store=MemoryStore(saved), now=again.now)
+    run(restored.async_load())
+    assert restored.manual_off == {"light.a"}
+    assert run(restored.apply("hall")) == "on"
+    assert again.services.calls == [("light", "turn_on", {"entity_id": ["light.b"]})]
 
 
 def test_a_room_sensor_is_not_added_to_outdoor_radiation():

@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 STORE_VERSION = 3
 SAVE_DELAY_S = 5.0
+# Flags saved before this epoch could be set by a repeated "off" state, not a hand switch.
+MANUAL_OFF_EPOCH = 2
 
 
 @dataclass
@@ -16,6 +18,7 @@ class PersistedState:
     enabled: dict[str, bool] = field(default_factory=dict)
     manual_off: set[str] = field(default_factory=set)
     night_hold: set[str] = field(default_factory=set)
+    manual_off_epoch: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -23,6 +26,7 @@ class PersistedState:
             "enabled": {k: v is True for k, v in self.enabled.items()},
             "manual_off": sorted(self.manual_off),
             "night_hold": sorted(self.night_hold),
+            "manual_off_epoch": MANUAL_OFF_EPOCH,
         }
 
     @classmethod
@@ -44,6 +48,9 @@ class PersistedState:
         held = data.get("night_hold")
         if isinstance(held, list):
             state.night_hold = {item for item in held if isinstance(item, str) and (zones is None or item in zones)}
+        epoch = data.get("manual_off_epoch")
+        if isinstance(epoch, int) and not isinstance(epoch, bool) and epoch >= 0:
+            state.manual_off_epoch = epoch
         return state
 
 

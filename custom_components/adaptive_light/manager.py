@@ -11,7 +11,7 @@ from typing import Any, Callable
 from .const import DOMAIN
 from .control import decide, in_night_window, light_allows_on, morning_off
 from .model import Config, outdoor_block
-from .persistence import PersistedState
+from .persistence import MANUAL_OFF_EPOCH, PersistedState
 
 _SERVICE = {"on": "turn_on", "off": "turn_off"}
 
@@ -31,7 +31,9 @@ class AdaptiveLightManager:
         self._off_since: dict[str, float] = {}
         self._expect: dict[str, str] = {}
         self._own_contexts: set[str] = set()
+        self._lamp_seen: dict[str, str] = {}
         self._lamps = {entity for spec in self.cfg.zones.values() for entity in spec["lamps"]}
+        self._remember_lamps()
         self._listeners: list[Callable[[], None]] = []
         self._unsubs: list[Callable[[], None]] = []
         self._timers: dict[str, Callable[[], None]] = {}
@@ -81,6 +83,8 @@ class AdaptiveLightManager:
         self.enabled.update(saved.enabled)
         self.manual_off = set(saved.manual_off)
         self._night_hold = set(saved.night_hold)
+        if saved.manual_off_epoch < MANUAL_OFF_EPOCH:
+            self.manual_off.clear()
 
     def save(self) -> None:
         if self.store is None:
@@ -207,14 +211,23 @@ class AdaptiveLightManager:
         self._own_contexts.add(context.id)
         return context
 
+    def _remember_lamps(self) -> None:
+        for entity in self._lamps:
+            state = self.hass.states.get(entity)
+            if state is not None and state.state in ("on", "off"):
+                self._lamp_seen[entity] = state.state
+
     def note_lamp_change(self, entity: str, new_state: str, *, caused_by_us: bool | None = None) -> None:
         """Record a lamp state change.
 
-        A change the zone itself requested does not touch the manual-off flag. Any other
-        ``off`` sets it, and any other ``on`` clears it.
+        A change the zone itself requested does not touch the manual-off flag. A hand
+        switch is only an ``on`` to ``off`` change. A repeated ``off`` while the lamp
+        was already off does not set the flag, and any other ``on`` clears it.
         """
         if entity not in self._lamps or new_state not in ("on", "off"):
             return
+        previous = self._lamp_seen.get(entity)
+        self._lamp_seen[entity] = new_state
         if caused_by_us is None:
             caused_by_us = self._expect.get(entity) == new_state
         if self._expect.get(entity) == new_state:
@@ -222,9 +235,9 @@ class AdaptiveLightManager:
         if caused_by_us:
             return
         before = set(self.manual_off)
-        if new_state == "off":
+        if new_state == "off" and previous == "on":
             self.manual_off.add(entity)
-        else:
+        elif new_state == "on":
             self.manual_off.discard(entity)
         self._expect.pop(entity, None)
         if self.manual_off != before:
@@ -304,6 +317,7 @@ class AdaptiveLightManager:
     async def async_start(self) -> None:
         from homeassistant.helpers.event import async_track_state_change_event
 
+        self._remember_lamps()
         entities = sorted(self._watched())
         if entities:
             self._unsubs.append(async_track_state_change_event(self.hass, entities, self._on_event))
