@@ -289,12 +289,15 @@ def test_wizard_offers_detection_rules_and_the_fridge_template_is_not_saved_unti
     assert menu["menu_options"]["group_add"] == "Add a group"
     r = sub(g, "detect_tpl_fridge")
     assert r["step_id"] == "detect_add" and not g.cfg["zones"][0].get("detect_rules")
-    assert fields(r)["sensor"] == "binary_sensor.living_room_presence_sensor_refrigerator_zone"
-    assert fields(r)["lamps"] == ["bottom"] and fields(r)["brightness"] == "fixed"
-    assert fields(r)["brightness_pct"] == 30 and fields(r)["color_temp_kelvin"] == 4500 and fields(r)["off_delay_s"] == 10
+    names = [str(k) for k in r["data_schema"].schema]
+    assert names[0] == "Trigger" and "sensor" not in names and "sensor_entity" not in names
+    assert "Brightness, %" in names and "Colour temperature, K" in names
+    assert fields(r)["Trigger"] == "binary_sensor.living_room_presence_sensor_refrigerator_zone"
+    assert fields(r)["Lamps"] == ["bottom"] and fields(r)["Brightness"] == "fixed"
+    assert fields(r)["Brightness, %"] == 30 and fields(r)["Colour temperature, K"] == 4500 and fields(r)["Off delay, s"] == 10
     sub(g, "detect_add", {
-        "sensor": fields(r)["sensor"], "lamps": ["bottom"], "brightness": "fixed",
-        "brightness_pct": 30, "color_temp_kelvin": 4500, "off_delay_s": 10,
+        "Trigger": fields(r)["Trigger"], "Lamps": ["bottom"], "Brightness": "fixed",
+        "Brightness, %": 30, "Colour temperature, K": 4500, "Off delay, s": 10,
     })
     rules = g.cfg["zones"][0]["detect_rules"]
     assert len(rules) == 1 and rules[0]["sensor"].endswith("refrigerator_zone") and rules[0]["lamps"] == ["bottom"]
@@ -311,6 +314,33 @@ def test_room_template_prefills_zone_presence_and_the_main_group():
     f._load()
     f._zone = "living_room"
     r = sub(f, "detect_tpl_room")
-    assert fields(r)["sensor"] == "zone_presence" and fields(r)["brightness"] == "adaptive"
-    assert fields(r)["lamps"] == ["top_left", "top_right", "bottom"] and fields(r)["off_delay_s"] == 600
+    names = [str(k) for k in r["data_schema"].schema]
+    assert "Brightness, %" not in names and "Colour temperature, K" not in names and "sensor_entity" not in names
+    assert fields(r)["Trigger"] == "zone_presence" and fields(r)["Brightness"] == "adaptive"
+    assert fields(r)["Lamps"] == ["top_left", "top_right", "bottom"] and fields(r)["Off delay, s"] == 600
     assert not f.cfg["zones"][0].get("detect_rules")
+    # choosing fixed on this screen asks for the brightness instead of saving a half rule
+    again = sub(f, "detect_add", {
+        "Trigger": "zone_presence", "Lamps": ["top_left"], "Brightness": "fixed", "Off delay, s": 600,
+    })
+    assert again["step_id"] == "detect_add" and "Brightness, %" in [str(k) for k in again["data_schema"].schema]
+    assert not f.cfg["zones"][0].get("detect_rules")
+    sub(f, "detect_add", {
+        "Trigger": "zone_presence", "Lamps": ["top_left", "top_right", "bottom"], "Brightness": "adaptive",
+        "Brightness, %": 30, "Off delay, s": 600,
+    })
+    saved = f.cfg["zones"][0]["detect_rules"]
+    assert len(saved) == 1 and saved[0]["sensor"] == "zone_presence" and saved[0]["brightness"] == "adaptive"
+    assert "brightness_pct" not in saved[0] and "color_temp_kelvin" not in saved[0]
+    # a binary sensor that is not one of the zone's own sensors is still one trigger
+    sub(f, "detect_add", {
+        "Trigger": "binary_sensor.other_room_motion", "Lamps": ["bottom"], "Brightness": "adaptive", "Off delay, s": 0,
+    })
+    assert f.cfg["zones"][0]["detect_rules"][-1]["sensor"] == "binary_sensor.other_room_motion"
+    HASS.config.language = "ru"
+    try:
+        ru = sub(f, "detect_tpl_room")
+        ru_names = [str(k) for k in ru["data_schema"].schema]
+        assert ru_names[0] == "Триггер" and "Яркость, %" not in ru_names and "sensor" not in ru_names
+    finally:
+        HASS.config.language = "en"

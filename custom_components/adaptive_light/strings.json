@@ -190,15 +190,14 @@
       },
       "detect_add": {
         "title": "Detection rule in {zone}",
-        "description": "The trigger is one binary sensor, or the combined zone presence (on if any presence sensor of the zone is on). The second field, if you fill it, replaces the list. Adaptive turns the lamps on and leaves the brightness to the controller, which still only adjusts lamps that are already on. Fixed sets a brightness and, if you fill it in, a colour temperature. Off delay 0 means the rule does not turn the lamps off. A rule on the fridge sensor at 30%, 4500 K and 10 s runs the fridge scenario (snapshot, then restore or off) instead of a plain on/off. Each lamp's auto switch still decides whether automation may touch it.",
+        "description": "One trigger, the lamps, and when to turn them off. Adaptive turns the lamps on and leaves the brightness to the controller. Fixed asks for a brightness and, if you want, a colour temperature. Off delay 0 does not turn the lamps off. A fridge sensor at 30%, 4500 K and 10 s still runs the fridge scenario.",
         "data": {
           "sensor": "Trigger",
-          "sensor_entity": "Or one binary sensor (replaces the list)",
           "lamps": "Lamps",
           "brightness": "Brightness",
-          "brightness_pct": "Fixed brightness, % (fixed mode only)",
-          "color_temp_kelvin": "Colour temperature, K (optional, fixed mode)",
-          "off_delay_s": "Off delay, seconds (0 = do not turn off)"
+          "brightness_pct": "Brightness, %",
+          "color_temp_kelvin": "Colour temperature, K",
+          "off_delay_s": "Off delay, s"
         }
       },
       "detect_delete": {
@@ -518,15 +517,14 @@
       },
       "detect_add": {
         "title": "Detection rule in {zone}",
-        "description": "The trigger is one binary sensor, or the combined zone presence (on if any presence sensor of the zone is on). The second field, if you fill it, replaces the list. Adaptive turns the lamps on and leaves the brightness to the controller, which still only adjusts lamps that are already on. Fixed sets a brightness and, if you fill it in, a colour temperature. Off delay 0 means the rule does not turn the lamps off. A rule on the fridge sensor at 30%, 4500 K and 10 s runs the fridge scenario (snapshot, then restore or off) instead of a plain on/off. Each lamp's auto switch still decides whether automation may touch it.",
+        "description": "One trigger, the lamps, and when to turn them off. Adaptive turns the lamps on and leaves the brightness to the controller. Fixed asks for a brightness and, if you want, a colour temperature. Off delay 0 does not turn the lamps off. A fridge sensor at 30%, 4500 K and 10 s still runs the fridge scenario.",
         "data": {
           "sensor": "Trigger",
-          "sensor_entity": "Or one binary sensor (replaces the list)",
           "lamps": "Lamps",
           "brightness": "Brightness",
-          "brightness_pct": "Fixed brightness, % (fixed mode only)",
-          "color_temp_kelvin": "Colour temperature, K (optional, fixed mode)",
-          "off_delay_s": "Off delay, seconds (0 = do not turn off)"
+          "brightness_pct": "Brightness, %",
+          "color_temp_kelvin": "Colour temperature, K",
+          "off_delay_s": "Off delay, s"
         }
       },
       "detect_delete": {

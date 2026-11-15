@@ -107,8 +107,8 @@ UI = {  # key: (en, ru)
                     "Rules turn lamps on when a sensor trips and, after a delay, off when it clears. An empty list does nothing. The two templates are optional: they only fill the form, nothing is saved until you submit it.\n\n{rules}",
                     "Правила включают лампы, когда срабатывает датчик, и выключают их через заданную задержку после того, как датчик погас. Пустой список ничего не делает. Два шаблона необязательны: они только заполняют форму, пока вы её не сохраните, ничего не записывается.\n\n{rules}"),
     "detect_add": ("Detection rule in {zone}", "Правило по детекции в {zone}",
-                   "The trigger is one binary sensor, or the combined zone presence (on if any presence sensor of the zone is on). The second field, if you fill it, replaces the list. Adaptive turns the lamps on and leaves the brightness to the controller, which still only adjusts lamps that are already on. Fixed sets a brightness and, if you fill it in, a colour temperature. Off delay 0 means the rule does not turn the lamps off. A rule on the fridge sensor at 30%, 4500 K and 10 s runs the fridge scenario (snapshot, then restore or off) instead of a plain on/off. Each lamp's auto switch still decides whether automation may touch it.",
-                   "Триггер — один бинарный датчик или общее присутствие зоны (зона занята, если включён любой её датчик присутствия). Второе поле, если его заполнить, заменяет выбор в списке. «Адаптивная» включает лампы и отдаёт яркость контроллеру: он по-прежнему меняет только уже включённые лампы. «Фиксированная» задаёт яркость и, если указать, цветовую температуру. Задержка 0 значит, что правило само лампы не выключает. Правило на датчике холодильника с 30%, 4500 K и 10 с запускает сценарий холодильника (снимок, потом возврат или выключение), а не простое включение. Переключатель auto лампы по-прежнему решает, может ли автоматика её трогать."),
+                   "One trigger, the lamps, and when to turn them off. Adaptive turns the lamps on and leaves the brightness to the controller. Fixed asks for a brightness and, if you want, a colour temperature. Off delay 0 does not turn the lamps off. A fridge sensor at 30%, 4500 K and 10 s still runs the fridge scenario.",
+                   "Один триггер, лампы и когда их выключить. Адаптивная включает лампы и отдаёт яркость контроллеру. Фиксированная спрашивает яркость и, если нужно, цветовую температуру. Задержка 0 лампы не выключает. Датчик холодильника с 30%, 4500 K и 10 с по-прежнему запускает сценарий холодильника."),
     "detect_delete": ("Delete a detection rule in {zone}", "Удалить правило по детекции в {zone}",
                       "The chosen rule is removed. The others stay.",
                       "Выбранное правило будет удалено. Остальные останутся."),
@@ -149,11 +149,10 @@ MENU = {  # step: {option: (en, ru)}
 FIELD = {"name": ("Name", "Название"), "area": ("Area (optional)", "Область (необязательно)"), "key": ("Zone key (optional)", "Ключ зоны (необязательно)"), "lamps": ("Lamps", "Лампы"), "share_pause": ("Manual change pauses the whole group", "Ручное изменение ставит на паузу всю группу"),
          "zone": ("Zone", "Зона"), "lamp": ("Lamp", "Лампа"), "group": ("Group", "Группа"),
          "sensor": ("Trigger", "Триггер"),
-         "sensor_entity": ("Or one binary sensor (replaces the list)", "Или один бинарный датчик (заменяет список)"),
          "brightness": ("Brightness", "Яркость"),
-         "brightness_pct": ("Fixed brightness, % (fixed mode only)", "Фиксированная яркость, % (только для фиксированной)"),
-         "color_temp_kelvin": ("Colour temperature, K (optional, fixed mode)", "Цветовая температура, K (необязательно, фиксированная)"),
-         "off_delay_s": ("Off delay, seconds (0 = do not turn off)", "Задержка выключения, секунды (0 = не выключать)"),
+         "brightness_pct": ("Brightness, %", "Яркость, %"),
+         "color_temp_kelvin": ("Colour temperature, K", "Цветовая температура, K"),
+         "off_delay_s": ("Off delay, s", "Задержка выключения, с"),
          "rule": ("Rule", "Правило")}
 CALIB_DESC = (
     "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores "
@@ -217,7 +216,7 @@ def build(i: int) -> dict:
     data["zone_lamps"]["lamps"] = FIELD["lamps"][i]
     for sid, f in (("pick_zone", "zone"), ("pick_lamp", "lamp"), ("pick_group", "group")):
         data[sid][f] = FIELD[f][i]
-    for f in ("sensor", "sensor_entity", "lamps", "brightness", "brightness_pct", "color_temp_kelvin", "off_delay_s"):
+    for f in ("sensor", "lamps", "brightness", "brightness_pct", "color_temp_kelvin", "off_delay_s"):
         data["detect_add"][f] = FIELD[f][i]
     data["detect_delete"]["rule"] = FIELD["rule"][i]
     for sid in steps:

@@ -314,9 +314,63 @@ class EditorMixin:
                 out.append(ent)
         return out
 
-    def _sensor_options(self) -> list[dict]:
-        label = self._t("Zone presence (any sensor)", "Присутствие зоны (любой датчик)")
-        return [{"value": ZONE_PRESENCE, "label": label}, *[{"value": e, "label": e} for e in self._binary_sensors()]]
+    def _detect_labels(self) -> dict[str, str]:
+        """Schema names are the labels. A missing translation then cannot fall back to a raw key."""
+        return {
+            "sensor": self._t("Trigger", "Триггер"),
+            "lamps": self._t("Lamps", "Лампы"),
+            "brightness": self._t("Brightness", "Яркость"),
+            "brightness_pct": self._t("Brightness, %", "Яркость, %"),
+            "color_temp_kelvin": self._t("Colour temperature, K", "Цветовая температура, K"),
+            "off_delay_s": self._t("Off delay, s", "Задержка выключения, с"),
+            "rule": self._t("Rule", "Правило"),
+        }
+
+    def _read_form(self, user_input: dict) -> dict:
+        rev = {label: key for key, label in self._detect_labels().items()}
+        return {rev.get(k, k): v for k, v in user_input.items()}
+
+    def _mark(self, name: str, *, required: bool = False, suggested=None, visible=None):
+        cls = vol.Required if required else vol.Optional
+        description = None if suggested in (None, "", []) else {"suggested_value": suggested}
+        if visible is not None:
+            try:
+                if description is None:
+                    return cls(name, visible=visible)
+                return cls(name, description=description, visible=visible)
+            except TypeError:
+                pass
+        if description is None:
+            return cls(name)
+        return cls(name, description=description)
+
+    def _fixed_fields_live(self) -> bool:
+        """Home Assistant 2026 hides a field while its marker `visible` condition is false."""
+        try:
+            vol.Optional("_probe", visible={"field": "brightness", "value": "fixed"})
+        except TypeError:
+            return False
+        return True
+
+    def _trigger_options(self) -> list[dict]:
+        presence = self._t("Zone presence (any sensor)", "Присутствие зоны (любой датчик)")
+        zone = self._binary_sensors()
+        seen = set(zone)
+        options = [{"value": ZONE_PRESENCE, "label": presence}, *[{"value": e, "label": e} for e in zone]]
+        states = getattr(self.hass, "states", None)
+        if states is not None and hasattr(states, "async_all"):
+            try:
+                found = states.async_all("binary_sensor")
+            except Exception:
+                found = []
+            for st in found:
+                eid = getattr(st, "entity_id", "") or ""
+                if eid.startswith("binary_sensor.") and eid not in seen:
+                    seen.add(eid)
+                    name = getattr(st, "name", None) or eid
+                    label = eid if name in (None, "", eid) else f"{name} ({eid})"
+                    options.append({"value": eid, "label": label})
+        return options
 
     def _rules_note(self, rules: list[dict]) -> str:
         if not rules:
@@ -325,32 +379,37 @@ class EditorMixin:
             f"{r['id']}: {r.get('sensor')} → {', '.join(r.get('lamps') or [])} ({r.get('brightness')}, {r.get('off_delay_s')} s)"
             for r in rules)
 
-    def _suggest(self, name: str, current, *, required: bool = False):
-        marker = vol.Required if required else vol.Optional
-        if current in (None, "", []):
-            return marker(name)
-        return marker(name, description={"suggested_value": current})
-
     def _detect_schema(self, cur: dict) -> vol.Schema:
-        pct = cur.get("brightness_pct", 30)
+        lab = self._detect_labels()
+        mode = cur.get("brightness") or "adaptive"
         delay = cur.get("off_delay_s", 0)
-        kelvin = cur.get("color_temp_kelvin")
         box = sel.NumberSelectorMode.BOX
-        return vol.Schema({
-            self._suggest("sensor", cur.get("sensor") or ZONE_PRESENCE, required=True): sel.SelectSelector(
-                sel.SelectSelectorConfig(options=self._sensor_options(), mode=sel.SelectSelectorMode.DROPDOWN)),
-            vol.Optional("sensor_entity"): _ent(["binary_sensor"]),
-            self._suggest("lamps", cur.get("lamps") or [], required=True): sel.SelectSelector(
+        live = self._fixed_fields_live()
+        fixed_only = {"field": lab["brightness"], "value": "fixed"}
+        brightness_options = [
+            {"value": "adaptive", "label": self._t(
+                "Adaptive (the controller sets the brightness)", "Адаптивная (яркость задаёт контроллер)")},
+            {"value": "fixed", "label": self._t("Fixed", "Фиксированная")},
+        ]
+        fields = {
+            self._mark(lab["sensor"], required=True, suggested=cur.get("sensor") or ZONE_PRESENCE): sel.SelectSelector(
+                sel.SelectSelectorConfig(options=self._trigger_options(), mode=sel.SelectSelectorMode.DROPDOWN,
+                                          custom_value=True)),
+            self._mark(lab["lamps"], required=True, suggested=cur.get("lamps") or []): sel.SelectSelector(
                 sel.SelectSelectorConfig(options=self._zone_lamp_options(), multiple=True)),
-            self._suggest("brightness", cur.get("brightness") or "adaptive", required=True): sel.SelectSelector(
-                sel.SelectSelectorConfig(options=["adaptive", "fixed"], translation_key="detect_brightness")),
-            self._suggest("brightness_pct", pct): sel.NumberSelector(
-                sel.NumberSelectorConfig(min=1, max=100, step=1, mode=box, unit_of_measurement="%")),
-            self._suggest("color_temp_kelvin", kelvin): sel.NumberSelector(
-                sel.NumberSelectorConfig(min=1000, max=20000, step=50, mode=box, unit_of_measurement="K")),
-            self._suggest("off_delay_s", 0 if delay in (None, "") else int(delay), required=True): sel.NumberSelector(
-                sel.NumberSelectorConfig(min=0, max=86400, step=1, mode=box, unit_of_measurement="s")),
-        })
+            self._mark(lab["brightness"], required=True, suggested=mode): sel.SelectSelector(
+                sel.SelectSelectorConfig(options=brightness_options, mode=sel.SelectSelectorMode.LIST)),
+        }
+        if live or mode == "fixed":
+            fields[self._mark(lab["brightness_pct"], required=True, suggested=cur.get("brightness_pct", 30),
+                              visible=fixed_only if live else None)] = sel.NumberSelector(
+                sel.NumberSelectorConfig(min=1, max=100, step=1, mode=box, unit_of_measurement="%"))
+            fields[self._mark(lab["color_temp_kelvin"], suggested=cur.get("color_temp_kelvin"),
+                              visible=fixed_only if live else None)] = sel.NumberSelector(
+                sel.NumberSelectorConfig(min=1000, max=20000, step=50, mode=box, unit_of_measurement="K"))
+        fields[self._mark(lab["off_delay_s"], required=True, suggested=0 if delay in (None, "") else int(delay))] = (
+            sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=86400, step=1, mode=box, unit_of_measurement="s")))
+        return vol.Schema(fields)
 
     async def async_step_zone_detect(self, user_input=None):
         z = ops.find(self.cfg, "zones", self._zone)
@@ -369,10 +428,11 @@ class EditorMixin:
         errors: dict = {}
         shown = pre
         if user_input is not None:
-            shown = user_input
-            sensor = user_input.get("sensor_entity") or user_input.get("sensor")
-            lamps = ops.as_entities(user_input.get("lamps"))
-            brightness = user_input.get("brightness")
+            form = self._read_form(user_input)
+            shown = form
+            sensor = form.get("sensor")
+            lamps = ops.as_entities(form.get("lamps"))
+            brightness = form.get("brightness")
             known = set(self._zone_lamp_options())
             if not sensor or (sensor != ZONE_PRESENCE and not str(sensor).startswith("binary_sensor.")):
                 errors["base"] = "detect_needs_sensor"
@@ -380,14 +440,16 @@ class EditorMixin:
                 errors["base"] = "detect_needs_lamps"
             elif brightness not in ("adaptive", "fixed"):
                 errors["base"] = "detect_needs_brightness"
+            elif brightness == "fixed" and form.get("brightness_pct") in (None, ""):
+                shown = {**form, "brightness": "fixed"}
             else:
-                pct = user_input.get("brightness_pct")
-                kelvin = user_input.get("color_temp_kelvin")
+                pct = form.get("brightness_pct")
+                kelvin = form.get("color_temp_kelvin")
                 try:
-                    delay = int(user_input.get("off_delay_s") if user_input.get("off_delay_s") not in (None, "") else 0)
+                    delay = int(form.get("off_delay_s") if form.get("off_delay_s") not in (None, "") else 0)
                 except (TypeError, ValueError):
                     delay = -1
-                if delay < 0 or (brightness == "fixed" and pct in (None, "")):
+                if delay < 0:
                     errors["base"] = "bad_detect_rule"
                 else:
                     rid = ops.add_detect_rule(
@@ -424,15 +486,21 @@ class EditorMixin:
 
     async def async_step_detect_delete(self, user_input=None):
         rules = ops.find(self.cfg, "zones", self._zone).get("detect_rules") or []
-        if user_input is not None and user_input.get("rule"):
-            ops.delete_detect_rule(self.cfg, self._zone, user_input["rule"])
+        picked = None
+        if user_input is not None:
+            form = self._read_form(user_input)
+            picked = form.get("rule")
+        if picked:
+            ops.delete_detect_rule(self.cfg, self._zone, picked)
             return await self._go("zone_detect")
         if not rules:
             return await self._go("zone_detect")
         options = [{"value": r["id"], "label": f"{r['id']}: {r.get('sensor')} → {', '.join(r.get('lamps') or [])}"} for r in rules]
         return self.async_show_form(
             step_id="detect_delete", description_placeholders={"zone": self._zone_name()},
-            data_schema=vol.Schema({vol.Required("rule"): sel.SelectSelector(sel.SelectSelectorConfig(options=options))}))
+            data_schema=vol.Schema({
+                self._mark(self._detect_labels()["rule"], required=True): sel.SelectSelector(
+                    sel.SelectSelectorConfig(options=options))}))
 
     # ---- final check
     def _errors(self) -> dict:
