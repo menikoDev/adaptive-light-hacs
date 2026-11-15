@@ -50,6 +50,17 @@ def _clock(value: Any, default: str) -> str:
     return f"{hour:02d}:{minute:02d}"
 
 
+def _factor(value: Any, default: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    if value <= 0:
+        return default
+    number = float(value)
+    if number.is_integer():
+        return int(number)
+    return number
+
+
 def _still(value: Any) -> int:
     number = _timeout(value)
     if number is None or number < 1:
@@ -84,13 +95,30 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     timeout = _timeout(raw.get("off_timeout"))
     if lamps is None or presence is None or timeout is None:
         return None
+    lux = raw.get("lux") or ""
+    if not isinstance(lux, str) or (lux and not lux.startswith("sensor.")):
+        lux = ""
+    threshold = _timeout(raw.get("threshold"))
+    if threshold is None:
+        threshold = 50
     return {
         "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
+        "lux": lux, "threshold": threshold, "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
         "night": raw.get("night") is True,
         "night_start": _clock(raw.get("night_start"), "02:00"),
         "night_end": _clock(raw.get("night_end"), "06:00"),
         "night_still": _still(raw.get("night_still")),
     }
+
+
+def outdoor_block(raw: Any) -> dict:
+    """Controller-wide outdoor light. An empty radiation sensor means zones without a lux sensor stay on presence only."""
+    if not isinstance(raw, dict):
+        raw = {}
+    radiation = raw.get("radiation") or ""
+    if not isinstance(radiation, str) or (radiation and not radiation.startswith("sensor.")):
+        radiation = ""
+    return {"radiation": radiation, "factor": _factor(raw.get("factor"), 0.6)}
 
 
 def normalise(raw: Any) -> dict:
@@ -105,6 +133,8 @@ def normalise(raw: Any) -> dict:
             continue
         used.add(zone["key"])
         out["zones"].append(zone)
+    if isinstance(raw.get("outdoor"), dict):
+        out["outdoor"] = outdoor_block(raw["outdoor"])
     return out
 
 
@@ -155,12 +185,16 @@ class Config:
     version: int
     zones: dict[str, dict]
     zone_order: list[str]
+    outdoor: dict | None = None
 
     @classmethod
     def from_dict(cls, raw: Any) -> "Config":
         data = normalise(raw)
         zones = {z["key"]: z for z in data["zones"]}
-        return cls(CONFIG_VERSION, zones, [z["key"] for z in data["zones"]])
+        return cls(CONFIG_VERSION, zones, [z["key"] for z in data["zones"]], data.get("outdoor"))
 
     def to_dict(self) -> dict:
-        return {"version": CONFIG_VERSION, "zones": [self.zones[k] for k in self.zone_order]}
+        out = {"version": CONFIG_VERSION, "zones": [self.zones[k] for k in self.zone_order]}
+        if self.outdoor is not None:
+            out["outdoor"] = dict(self.outdoor)
+        return out

@@ -12,7 +12,7 @@ from homeassistant.helpers import selector as sel
 from homeassistant.util import slugify
 
 from .const import CONF_CONFIG, DOMAIN
-from .model import empty_config, normalise, unique_key, validate
+from .model import empty_config, normalise, outdoor_block, unique_key, validate
 from .momentary import keep_section, parse_actions, write_action
 
 # Schema keys are the translation keys. The visible words live in strings.json
@@ -96,6 +96,11 @@ class _Fields:
             return vol.Required(key), selector
         return vol.Required(key, description={"suggested_value": value}), selector
 
+    def _optional(self, key: str, selector, value: Any):
+        if value in (None, "", []):
+            return vol.Optional(key), selector
+        return vol.Optional(key, description={"suggested_value": value}), selector
+
     def _schema(self, current: dict) -> vol.Schema:
         name, name_sel = self._field("name", sel.TextSelector(), current.get("name") or None)
         lamps, lamp_sel = self._field(
@@ -105,6 +110,18 @@ class _Fields:
             "presence",
             sel.EntitySelector(sel.EntitySelectorConfig(domain="binary_sensor", multiple=True)),
             current.get("presence") or [],
+        )
+        lux, lux_sel = self._optional(
+            "lux",
+            sel.EntitySelector(sel.EntitySelectorConfig(domain="sensor", multiple=False)),
+            current.get("lux") or None,
+        )
+        threshold, threshold_sel = self._field(
+            "threshold",
+            sel.NumberSelector(sel.NumberSelectorConfig(
+                min=0, max=100000, step=1, unit_of_measurement="lx", mode=sel.NumberSelectorMode.BOX,
+            )),
+            current.get("threshold", 50),
         )
         timeout, timeout_sel = self._field(
             "off_timeout",
@@ -122,8 +139,8 @@ class _Fields:
             current.get("night_still", 60),
         )
         return vol.Schema({
-            name: name_sel, lamps: lamp_sel, presence: presence_sel, timeout: timeout_sel,
-            night: night_sel, start: start_sel, end: end_sel, still: still_sel,
+            name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel,
+            timeout: timeout_sel, night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
 
     def _parse(self, user_input: dict) -> tuple[dict | None, dict]:
@@ -144,6 +161,19 @@ class _Fields:
             errors["presence"] = "bad_presence"
         if timeout is None:
             errors["off_timeout"] = "bad_timeout"
+        lux = user_input.get("lux") or ""
+        if isinstance(lux, list):
+            lux = lux[0] if lux else ""
+        if not isinstance(lux, str):
+            lux = ""
+        if lux and not lux.startswith("sensor."):
+            errors["lux"] = "bad_lux"
+        if "threshold" not in user_input or user_input.get("threshold") in (None, ""):
+            threshold = 50
+        else:
+            threshold = _timeout(user_input.get("threshold"))
+            if threshold is None:
+                errors["threshold"] = "bad_threshold"
         night = user_input.get("night") is True
         start = _hhmm(user_input.get("night_start")) or "02:00"
         end = _hhmm(user_input.get("night_end")) or "06:00"
@@ -154,8 +184,13 @@ class _Fields:
             errors["night_still"] = "bad_timeout"
         if errors:
             return None, errors
+        coefficient = 1
+        for zone in self.cfg.get("zones") or []:
+            if isinstance(zone, dict) and zone.get("key") == self._zone and zone.get("lux_coefficient") not in (None, ""):
+                coefficient = zone["lux_coefficient"]
         return {
             "name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout,
+            "lux": lux, "threshold": threshold, "lux_coefficient": coefficient,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
         }, {}
 
@@ -194,6 +229,84 @@ class _Fields:
             return self._finish(title)
         return self._form(self._current(None), None)
 
+    def _entry_config(self, entry) -> dict:
+        options = getattr(entry, "options", None) or {}
+        data = getattr(entry, "data", None) or {}
+        raw = options.get(CONF_CONFIG) if isinstance(options, dict) else None
+        if not isinstance(raw, dict) and isinstance(data, dict):
+            raw = data.get(CONF_CONFIG)
+        return raw if isinstance(raw, dict) else {}
+
+    def _other_outdoor(self) -> bool:
+        getter = getattr(self, "_async_current_entries", None)
+        if not callable(getter):
+            return False
+        own = getattr(getattr(self, "config_entry", None), "entry_id", None)
+        for entry in getter() or []:
+            if own and getattr(entry, "entry_id", None) == own:
+                continue
+            if isinstance(self._entry_config(entry).get("outdoor"), dict):
+                return True
+        return False
+
+    def _outdoor_current(self) -> dict:
+        outdoor = self.cfg.get("outdoor") if isinstance(self.cfg, dict) else None
+        if isinstance(outdoor, dict):
+            return outdoor_block(outdoor)
+        return {"radiation": "", "factor": 0.6}
+
+    def _outdoor_schema(self, current: dict) -> vol.Schema:
+        radiation, radiation_sel = self._optional(
+            "radiation",
+            sel.EntitySelector(sel.EntitySelectorConfig(domain="sensor", multiple=False)),
+            current.get("radiation") or None,
+        )
+        factor, factor_sel = self._field(
+            "factor",
+            sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=100, step=0.1, mode=sel.NumberSelectorMode.BOX)),
+            current.get("factor", 0.6),
+        )
+        return vol.Schema({radiation: radiation_sel, factor: factor_sel})
+
+    def _parse_outdoor(self, user_input: dict) -> tuple[dict | None, dict]:
+        radiation = user_input.get("radiation") or ""
+        if isinstance(radiation, list):
+            radiation = radiation[0] if radiation else ""
+        if not isinstance(radiation, str):
+            radiation = ""
+        errors: dict[str, str] = {}
+        if radiation and not radiation.startswith("sensor."):
+            errors["radiation"] = "bad_lux"
+        factor = user_input.get("factor", 0.6)
+        if factor in (None, ""):
+            factor = 0.6
+        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or factor < 0:
+            errors["factor"] = "bad_factor"
+        if errors:
+            return None, errors
+        return outdoor_block({"radiation": radiation, "factor": factor}), {}
+
+    def _finish_outdoor(self):
+        cfg = {"version": 5, "zones": [], "outdoor": outdoor_block(self.cfg.get("outdoor") or {})}
+        if self._saving:
+            entries = getattr(self.hass, "config_entries", None)
+            update = getattr(entries, "async_update_entry", None)
+            if update is not None and getattr(self, "config_entry", None) is not None:
+                update(self.config_entry, title="Outdoor")
+            return self.async_create_entry(title="", data={CONF_CONFIG: cfg})
+        return self.async_create_entry(title="Outdoor", data={CONF_CONFIG: cfg})
+
+    async def async_step_outdoor(self, user_input=None):
+        if not self._saving and self._other_outdoor():
+            return self.async_abort(reason="already_configured")
+        if user_input is not None:
+            parsed, errors = self._parse_outdoor(user_input)
+            if errors:
+                return self.async_show_form(step_id="outdoor", data_schema=self._outdoor_schema(user_input), errors=errors)
+            self.cfg = {"version": 5, "zones": [], "outdoor": parsed}
+            return self._finish_outdoor()
+        return self.async_show_form(step_id="outdoor", data_schema=self._outdoor_schema(self._outdoor_current()))
+
 
 class AdaptiveLightConfigFlow(_Fields, config_entries.ConfigFlow, domain=DOMAIN):
     """Create one zone. A second zone is a second entry, not a second step."""
@@ -206,7 +319,7 @@ class AdaptiveLightConfigFlow(_Fields, config_entries.ConfigFlow, domain=DOMAIN)
         self._zone = ""
 
     async def async_step_user(self, user_input=None):
-        return await self.async_step_zone(user_input)
+        return self.async_show_menu(step_id="user", menu_options=["zone", "outdoor"])
 
     @staticmethod
     @callback
@@ -242,6 +355,8 @@ class AdaptiveLightOptionsFlow(_Fields, config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         self._load()
+        if isinstance(self.cfg.get("outdoor"), dict) and not self._zone:
+            return await self.async_step_outdoor()
         return self.async_show_menu(step_id="init", menu_options=["zone", "momentary"])
 
     async def async_step_momentary(self, user_input=None):

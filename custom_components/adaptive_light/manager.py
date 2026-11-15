@@ -8,8 +8,9 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from .control import decide, in_night_window
-from .model import Config
+from .const import DOMAIN
+from .control import decide, in_night_window, light_allows_on, morning_off
+from .model import Config, outdoor_block
 from .persistence import PersistedState
 
 _SERVICE = {"on": "turn_on", "off": "turn_off"}
@@ -53,6 +54,24 @@ class AdaptiveLightManager:
     def occupied(self, zone: str) -> bool:
         return any(self.is_on(entity) for entity in self.cfg.zones[zone]["presence"])
 
+    def estimate(self, zone: str) -> float | None:
+        """Lux from one source: the zone sensor, or outdoor radiation when the zone has none."""
+        spec = self.cfg.zones.get(zone)
+        if spec is None:
+            return None
+        if spec.get("lux"):
+            room = _reading(self.hass, spec["lux"])
+            if room is None:
+                return None
+            return room * float(spec.get("lux_coefficient") or 1)
+        entity, factor = controller_outdoor(self.hass)
+        if not entity:
+            return None
+        radiation = _reading(self.hass, entity)
+        if radiation is None:
+            return None
+        return radiation * factor
+
     async def async_load(self) -> None:
         if self.store is None:
             return
@@ -93,7 +112,16 @@ class AdaptiveLightManager:
             await self._set_lamps(spec["lamps"], "off")
             self._notify()
             return "night"
+        level = self.estimate(zone)
+        threshold = float(spec.get("threshold", 50))
+        if self.occupied(zone) and morning_off(level, threshold):
+            self._off_since.pop(zone, None)
+            await self._set_lamps(spec["lamps"], "off")
+            self._notify()
+            return "lux"
         command, since = decide(self.occupied(zone), self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
+        if command == "on" and not light_allows_on(level, threshold):
+            command, since = "wait", None
         if since is None:
             self._off_since.pop(zone, None)
         else:
@@ -256,15 +284,27 @@ class AdaptiveLightManager:
         new = event.data.get("new_state")
         if entity in self._lamps and new is not None:
             self.note_lamp_change(entity, new.state, caused_by_us=self._caused_by_us(new))
+        radiation, _factor = controller_outdoor(self.hass)
         for zone, spec in self.cfg.zones.items():
-            if entity in spec["presence"]:
+            if entity in spec["presence"] or entity == spec.get("lux") or (radiation and entity == radiation):
                 await self.apply(zone)
                 self._arm(zone)
+
+    def _watched(self) -> set[str]:
+        entities = set(self._lamps)
+        for spec in self.cfg.zones.values():
+            entities.update(spec["presence"])
+            if spec.get("lux"):
+                entities.add(spec["lux"])
+        radiation, _factor = controller_outdoor(self.hass)
+        if radiation:
+            entities.add(radiation)
+        return entities
 
     async def async_start(self) -> None:
         from homeassistant.helpers.event import async_track_state_change_event
 
-        entities = sorted(self._lamps | {entity for spec in self.cfg.zones.values() for entity in spec["presence"]})
+        entities = sorted(self._watched())
         if entities:
             self._unsubs.append(async_track_state_change_event(self.hass, entities, self._on_event))
         for zone in self.cfg.zone_order:
@@ -281,3 +321,45 @@ class AdaptiveLightManager:
     async def async_flush(self) -> None:
         if self.store is not None:
             await self.store.async_save(self._snapshot())
+
+
+def _reading(hass, entity: str) -> float | None:
+    if not entity:
+        return None
+    state = hass.states.get(entity)
+    raw = getattr(state, "state", None) if state is not None else None
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        return None
+    if isinstance(raw, str) and raw.strip().lower() in ("", "unknown", "unavailable", "none", "on", "off"):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def controller_outdoor(hass) -> tuple[str, float]:
+    """Radiation sensor and factor shared by every zone. Tests may set hass.outdoor."""
+    direct = getattr(hass, "outdoor", None)
+    if isinstance(direct, dict):
+        block = outdoor_block(direct)
+        return block["radiation"], float(block["factor"])
+    getter = getattr(getattr(hass, "config_entries", None), "async_entries", None)
+    if not callable(getter):
+        return "", 0.6
+    radiation, factor = "", 0.6
+    try:
+        found = getter(DOMAIN)
+    except Exception:
+        return "", 0.6
+    for entry in found or []:
+        options = getattr(entry, "options", None) or {}
+        data = getattr(entry, "data", None) or {}
+        raw = options.get("config") if isinstance(options, dict) else None
+        if not isinstance(raw, dict) and isinstance(data, dict):
+            raw = data.get("config")
+        if not isinstance(raw, dict) or not isinstance(raw.get("outdoor"), dict):
+            continue
+        block = outdoor_block(raw["outdoor"])
+        radiation, factor = block["radiation"], float(block["factor"])
+    return radiation, factor

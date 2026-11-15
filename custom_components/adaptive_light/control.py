@@ -28,6 +28,29 @@ def in_night_window(hour: int, minute: int, start: str, end: str) -> bool:
     return now_m >= start_m or now_m < end_m
 
 
+def light_estimate(room_lux: float | None, room_coefficient: float, radiation: float | None, outdoor_factor: float) -> float | None:
+    """One source. A room sensor wins; otherwise outdoor radiation. Never both."""
+    if room_lux is not None:
+        return room_lux * room_coefficient
+    if radiation is not None:
+        return radiation * outdoor_factor
+    return None
+
+
+def light_allows_on(estimate: float | None, threshold: float) -> bool:
+    """Presence may turn lamps on when there is no estimate, the threshold is 0, or the room is darker than the threshold."""
+    if threshold <= 0 or estimate is None:
+        return True
+    return estimate < threshold
+
+
+def morning_off(estimate: float | None, threshold: float) -> bool:
+    """Lamps that are already on go off once the estimate rises above the threshold. Threshold 0 never does this."""
+    if threshold <= 0 or estimate is None:
+        return False
+    return estimate > threshold
+
+
 def decide(occupied: bool, off_since: float | None, now: float, timeout: float) -> tuple[str, float | None]:
     """Return ``(command, off_since)``.
 

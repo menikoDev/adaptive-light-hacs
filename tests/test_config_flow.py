@@ -24,8 +24,8 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-FIELDS = ["name", "lamps", "presence", "off_timeout", "night", "night_start", "night_end", "night_still"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "off_timeout", "night", "night_start", "night_end", "night_still"}
+FIELDS = ["name", "lamps", "presence", "lux", "threshold", "off_timeout", "night", "night_start", "night_end", "night_still"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "lux_coefficient", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
 def run(coro):
@@ -81,9 +81,12 @@ def _entry(data, title):
 
 def test_one_window_creates_one_zone_and_another_entry_is_independent():
     flow = Wizard()
-    form = sub(flow, "user")
+    menu = sub(flow, "user")
+    assert menu["type"] == "menu" and menu["menu_options"] == ["zone", "outdoor"]
+    form = sub(flow, "zone")
     assert form["type"] == "form" and form["step_id"] == "zone"
     assert names(form) == FIELDS
+    assert "lux_coefficient" not in names(form)
     created = sub(flow, "zone", _fill())
     assert created["type"] == "create_entry" and created["title"] == "Hall"
     assert len(created["data"]["config"]["zones"]) == 1
@@ -92,7 +95,7 @@ def test_one_window_creates_one_zone_and_another_entry_is_independent():
     assert zone["key"] == "hall" and zone["off_timeout"] == 45
 
     again = Wizard(entries=[_entry(created["data"], "Hall")])
-    form = sub(again, "user")
+    form = sub(again, "zone")
     assert form["type"] == "form" and names(form) == FIELDS
     second = sub(again, "zone", _fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"], timeout=20))
     assert second["type"] == "create_entry" and second["title"] == "Kitchen"
@@ -131,7 +134,7 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
 
     HASS.config.language = "ru"
     try:
-        assert names(sub(Wizard(), "user")) == FIELDS
+        assert names(sub(Wizard(), "zone")) == FIELDS
         assert names(sub(Options(cfg), "zone")) == FIELDS
     finally:
         HASS.config.language = "en"
@@ -210,6 +213,37 @@ def test_options_can_edit_a_momentary_action_and_saving_the_zone_keeps_it():
     assert kept["data"]["config"]["zones"][0]["off_timeout"] == 15
     assert kept["data"]["config"]["momentary_actions"][0]["color"] == "white"
     assert kept["data"]["config"]["momentary_actions"][0]["trigger"]["entity_id"] == "binary_sensor.door"
+
+
+def test_outdoor_entry_is_one_controller_and_a_saved_coefficient_stays_hidden():
+    flow = Wizard()
+    form = sub(flow, "outdoor")
+    assert form["type"] == "form" and names(form) == ["radiation", "factor"]
+    created = sub(flow, "outdoor", {"radiation": "sensor.rad", "factor": 0.6})
+    assert created["type"] == "create_entry" and created["title"] == "Outdoor"
+    outdoor = created["data"]["config"]["outdoor"]
+    assert created["data"]["config"]["zones"] == []
+    assert outdoor == {"radiation": "sensor.rad", "factor": 0.6}
+    again = Wizard(entries=[_entry(created["data"], "Outdoor")])
+    aborted = sub(again, "outdoor")
+    assert aborted["type"] == "abort" and aborted["reason"] == "already_configured"
+
+    cfg = {
+        "version": 5,
+        "zones": [{
+            "key": "hall", "name": "Hall", "lamps": ["light.a"],
+            "presence": ["binary_sensor.p"], "off_timeout": 45, "lux_coefficient": 2,
+        }],
+    }
+    options = Options(cfg)
+    sub(options, "init")
+    assert "lux_coefficient" not in names(sub(options, "zone"))
+    saved = sub(options, "zone", _fill(name="Hall", lamps=["light.a"], presence=["binary_sensor.p"], timeout=45))
+    assert saved["data"]["config"]["zones"][0]["lux_coefficient"] == 2
+
+    outdoor_options = Options(created["data"]["config"], title="Outdoor")
+    opened = sub(outdoor_options, "init")
+    assert opened["type"] == "form" and opened["step_id"] == "outdoor"
 
 
 def test_a_zone_without_lamps_or_presence_stays_on_the_form():
