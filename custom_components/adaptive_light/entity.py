@@ -7,18 +7,16 @@ from .const import DOMAIN
 from .manager import AdaptiveLightManager
 
 
-def hub_device() -> DeviceInfo:
-    return DeviceInfo(identifiers={(DOMAIN, "hub")}, name="Adaptive Light", manufacturer="Adaptive Light", model="Controller")
-
-
 def zone_device(mgr: AdaptiveLightManager, zone: str) -> DeviceInfo:
-    return DeviceInfo(identifiers={(DOMAIN, f"zone_{zone}")}, name=f"Adaptive Light: {mgr.cfg.zones[zone]['name']}",
-                      manufacturer="Adaptive Light", model="Zone")
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"zone_{zone}")},
+        name=f"Adaptive Light: {mgr.cfg.zones[zone]['name']}",
+        manufacturer="Adaptive Light",
+        model="Zone",
+    )
 
 
 class AdaptiveEntity(Entity):
-    """entity_id and unique_id are fixed (object id); names are readable, no automatic device-name prefix."""
-
     _attr_should_poll = False
     _attr_has_entity_name = False
 

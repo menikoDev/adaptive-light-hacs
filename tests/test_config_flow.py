@@ -1,300 +1,123 @@
-"""The real ConfigFlow / OptionsFlow classes driven step by step with a stub hass (needs the homeassistant package;
-skipped without it: run with the harness venv, /tmp/hatest/venv/bin/python -m pytest).
-
-Covers: optional illuminance, the area step (names, keys, prefilled lamps and sensors), the wizard draft (save after every
-step, resume, discard, cleared on finish). What it does NOT cover: the real area/entity registries and Store (stand B does)."""
-import asyncio, importlib.util, os, sys, types
+"""The wizard and the options flow edit a zone through the same four fields."""
+import asyncio
+import importlib.util
+import os
+import sys
+import types
 
 import pytest
 
 pytest.importorskip("homeassistant")
-import voluptuous as vol  # noqa: E402
 
 import conftest  # noqa: E402,F401
-from adaptive_light import draft  # noqa: E402
 
-_spec = importlib.util.spec_from_file_location("adaptive_light.config_flow", os.path.join(conftest.ROOT, "custom_components", "adaptive_light", "config_flow.py"))
-cf = importlib.util.module_from_spec(_spec); sys.modules["adaptive_light.config_flow"] = cf; _spec.loader.exec_module(cf)
+_spec = importlib.util.spec_from_file_location(
+    "adaptive_light.config_flow",
+    os.path.join(conftest.ROOT, "custom_components", "adaptive_light", "config_flow.py"),
+)
+cf = importlib.util.module_from_spec(_spec)
+sys.modules["adaptive_light.config_flow"] = cf
+_spec.loader.exec_module(cf)
 
-AREAS = [("living_room", "Гостиная"), ("bedroom", "Bedroom")]
-DEFAULTS = {"bedroom": {"lights": ["light.bed_a", "light.bed_b"], "illuminance": ["sensor.bed_lux"], "presence": ["binary_sensor.bed_occ"],
-                        "media": ["media_player.bed_tv"]}}
+from adaptive_light.const import CONF_CONFIG  # noqa: E402
+
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
+EN = ["Zone name", "Lamps", "Presence sensors", "Off timeout, s"]
+RU = ["Название зоны", "Лампы", "Датчики присутствия", "Таймаут выключения, с"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "off_timeout"}
 
 
-def run(c): return asyncio.run(c)
+def run(coro):
+    return asyncio.run(coro)
 
 
 class Wizard(cf.AdaptiveLightConfigFlow):
-    def __init__(self, store, areas=AREAS, now=1000.0):
+    def __init__(self):
         super().__init__()
-        self.hass, self.store, self.areas, self.now = HASS, store, areas, now
+        self.hass = HASS
 
-    def _async_current_entries(self, include_ignore=None): return []
-    def _list_areas(self): return self.areas
-    def _area_defaults(self, area_id): return DEFAULTS.get(area_id, {})
-    def _drafts(self): return self.store
-    def _now_ts(self): return self.now
+    def _async_current_entries(self, include_ignore=None):
+        return []
 
 
 class Options(cf.AdaptiveLightOptionsFlow):
-    def __init__(self, cfg, areas=AREAS):
+    def __init__(self, cfg):
         super().__init__()
-        self.hass, self.areas = HASS, areas
-        self._entry = types.SimpleNamespace(options={}, data={cf.CONF_CONFIG: cfg})
+        self.hass = HASS
+        self._entry = types.SimpleNamespace(options={}, data={CONF_CONFIG: cfg})
 
     @property
-    def config_entry(self): return self._entry
-    def _list_areas(self): return self.areas
-    def _area_defaults(self, area_id): return DEFAULTS.get(area_id, {})
+    def config_entry(self):
+        return self._entry
 
 
-def fields(result):
-    """name -> suggested value of a form's schema."""
-    out = {}
-    for k in result["data_schema"].schema:
-        out[str(k)] = (k.description or {}).get("suggested_value")
-    return out
+def names(result):
+    return [str(key) for key in result["data_schema"].schema]
 
 
 def sub(flow, step, data=None):
     return run(getattr(flow, f"async_step_{step}")(data))
 
 
-# ---------------------------------------------------------------- illuminance is optional
-
-def test_zone_sensors_form_has_no_required_field_and_accepts_an_empty_submit():
-    f = Wizard(draft.MemoryDraftStore())
-    sub(f, "zone", {}); r = sub(f, "zone_name", {"name": "Hall"})
-    assert r["type"] == "form" and r["step_id"] == "zone_sensors"
-    assert not [k for k in r["data_schema"].schema if isinstance(k, vol.Required)]
-    r = sub(f, "zone_sensors", {})
-    assert r["step_id"] == "zone_lamps" and not r.get("errors")
-    assert f.cfg["sensors"] == []
+def _fill(labels, name="Hall", lamps=None, presence=None, timeout=45):
+    return {
+        labels[0]: name,
+        labels[1]: lamps if lamps is not None else ["light.a", "light.b"],
+        labels[2]: presence if presence is not None else ["binary_sensor.p"],
+        labels[3]: timeout,
+    }
 
 
-def test_zone_sensors_stores_illuminance_when_given_and_clears_it_when_removed():
-    f = Wizard(draft.MemoryDraftStore())
-    sub(f, "zone", {}); sub(f, "zone_name", {"name": "Hall"})
-    sub(f, "zone_sensors", {"illuminance": "sensor.l", "presence": "binary_sensor.p"})
-    assert {(s["role"], s["entity"]) for s in f.cfg["sensors"]} == {("illuminance", "sensor.l"), ("presence", "binary_sensor.p")}
-    sub(f, "zone_sensors", {"presence": "binary_sensor.p"})
-    assert {s["role"] for s in f.cfg["sensors"]} == {"presence"}
+def test_the_wizard_and_options_edit_the_same_four_fields():
+    flow = Wizard()
+    form = sub(flow, "user")
+    assert form["type"] == "form" and form["step_id"] == "zone"
+    assert names(form) == EN
+    menu = sub(flow, "zone", _fill(EN))
+    assert menu["type"] == "menu"
+    assert menu["menu_options"] == {"zone": "Add another zone", "save": "Finish"}
+    zone = flow.cfg["zones"][0]
+    assert set(zone) == ZONE_KEYS
+    assert zone == {
+        "key": "hall", "name": "Hall", "lamps": ["light.a", "light.b"],
+        "presence": ["binary_sensor.p"], "off_timeout": 45,
+    }
+    created = sub(flow, "save")
+    assert created["type"] == "create_entry"
+    assert set(created["data"]["config"]) == {"version", "zones"}
+    assert "rules" not in created["data"]["config"]
 
+    options = Options(created["data"]["config"])
+    menu = sub(options, "init")
+    assert menu["menu_options"] == {"pick": "Edit a zone", "add": "Add a zone"}
+    picked = sub(options, "pick")
+    assert names(picked) == ["Zone"]
+    sub(options, "pick", {"Zone": "hall"})
+    assert sub(options, "zone_menu")["menu_options"]["edit"] == "Edit"
+    edited = sub(options, "edit")
+    assert names(edited) == EN
+    saved = sub(options, "edit", _fill(EN, lamps=["light.a"], presence=["binary_sensor.p", "binary_sensor.q"], timeout=10))
+    assert saved["type"] == "create_entry"
+    zone = saved["data"]["config"]["zones"][0]
+    assert set(zone) == ZONE_KEYS
+    assert zone["key"] == "hall" and zone["lamps"] == ["light.a"]
+    assert zone["presence"] == ["binary_sensor.p", "binary_sensor.q"] and zone["off_timeout"] == 10
 
-def test_a_zone_without_illuminance_reaches_the_save_step_without_errors():
-    f = Wizard(draft.MemoryDraftStore())
-    sub(f, "zone", {}); sub(f, "zone_name", {"name": "Hall"}); sub(f, "zone_sensors", {}); sub(f, "zone_lamps", {"lamps": ["light.h"]})
-    r = sub(f, "save")
-    assert r["type"] == "form" and r["step_id"] == "save" and not r["errors"]
-    r = sub(f, "save", {})
-    assert r["type"] == "create_entry" and r["data"]["config"]["zones"][0]["key"] == "hall"
-
-
-# ---------------------------------------------------------------- areas
-
-def test_area_step_offers_areas_and_prefills_name_key_lamps_and_sensors():
-    f = Wizard(draft.MemoryDraftStore())
-    r = sub(f, "zone")
-    assert r["type"] == "form" and r["step_id"] == "zone"
-    opts = r["data_schema"].schema[next(iter(r["data_schema"].schema))].config["options"]
-    assert opts == [{"value": "living_room", "label": "Гостиная"}, {"value": "bedroom", "label": "Bedroom"}]
-    r = sub(f, "zone", {"area": "bedroom"})
-    assert r["step_id"] == "zone_name" and fields(r) == {"name": "Bedroom", "key": "bedroom"}
-    r = sub(f, "zone_name", {"name": "Bedroom", "key": "bedroom"})
-    assert r["step_id"] == "zone_sensors"
-    assert fields(r) == {"illuminance": "sensor.bed_lux", "presence": ["binary_sensor.bed_occ"], "media": ["media_player.bed_tv"]}
-    r = sub(f, "zone_sensors", {"illuminance": "sensor.bed_lux"})
-    assert r["step_id"] == "zone_lamps" and fields(r) == {"lamps": ["light.bed_a", "light.bed_b"]}
-    z = f.cfg["zones"][0]
-    assert z["area_id"] == "bedroom" and z["key"] == "bedroom"
-
-
-def test_custom_name_still_works_and_area_name_can_be_overridden():
-    f = Wizard(draft.MemoryDraftStore())
-    sub(f, "zone", {})                                                       # no area picked = custom zone
-    r = sub(f, "zone_name", None)
-    assert fields(r) == {"name": None, "key": None}
-    sub(f, "zone_name", {"name": "Моя берлога"})
-    assert f.cfg["zones"][0]["name"] == "Моя берлога" and f.cfg["zones"][0]["key"] == "moia_berloga" and "area_id" not in f.cfg["zones"][0]
-    sub(f, "zone", {"area": "bedroom"}); sub(f, "zone_name", {"name": "Master bedroom", "key": ""})
-    z = f.cfg["zones"][1]
-    assert (z["name"], z["key"], z["area_id"]) == ("Master bedroom", "bedroom", "bedroom")
-    assert fields(sub(f, "zone_sensors", None))["illuminance"] == "sensor.bed_lux"  # prefilled although the name was overridden
-
-
-def test_zone_name_validation_and_used_areas_are_hidden():
-    f = Wizard(draft.MemoryDraftStore())
-    sub(f, "zone", {"area": "bedroom"})
-    assert sub(f, "zone_name", {"name": "  "})["errors"] == {"base": "zone_needs_name"}
-    assert sub(f, "zone_name", {"name": "X", "key": "Bad Key"})["errors"] == {"base": "bad_key"}
-    sub(f, "zone_name", {"name": "Bedroom"})
-    sub(f, "zone", {}); assert sub(f, "zone_name", {"name": "Other", "key": "bedroom"})["errors"] == {"base": "duplicate_key"}
-    f2 = Wizard(draft.MemoryDraftStore()); sub(f2, "zone", {"area": "bedroom"}); sub(f2, "zone_name", {"name": "Bedroom"})
-    r = sub(f2, "zone")
-    assert [o["value"] for o in r["data_schema"].schema[next(iter(r["data_schema"].schema))].config["options"]] == ["living_room"]
-
-
-def test_without_areas_the_zone_step_goes_straight_to_the_name():
-    f = Wizard(draft.MemoryDraftStore(), areas=[])
-    assert sub(f, "zone")["step_id"] == "zone_name"
-
-
-def test_options_flow_new_zone_uses_areas_too():
-    from adaptive_light.model import plan_living_room
-    f = Options(plan_living_room())
-    run(f.async_step_init())
-    r = sub(f, "new_zone")
-    assert r["step_id"] == "new_zone"
-    sub(f, "new_zone", {"area": "bedroom"}); r = sub(f, "zone_name", {"name": "Bedroom"})
-    assert r["step_id"] == "zone_sensors" and fields(r)["illuminance"] == "sensor.bed_lux"
-    assert [z["key"] for z in f.cfg["zones"]] == ["living_room", "bedroom"]
-    sub(f, "zone_sensors", {})
-    assert sub(f, "zone_menu")["step_id"] == "zone_menu" and not f._errors()      # a zone without illuminance saves fine
-
-
-# ---------------------------------------------------------------- draft
-
-def test_every_step_saves_a_draft_and_finishing_removes_it():
-    store = draft.MemoryDraftStore()
-    f = Wizard(store)
-    r = sub(f, "user"); assert [o for o in r["menu_options"]] == ["global_sensors", "preset_plan"]
-    assert store.data is None
-    sub(f, "global_sensors", {"radiation": "sensor.rad"}); assert store.data["step"] == "zone" and store.data["config"]["sensors"]
-    sub(f, "zone", {}); sub(f, "zone_name", {"name": "Hall"}); assert store.data["step"] == "zone_sensors" and store.data["zone"] == "hall"
-    sub(f, "zone_sensors", {"illuminance": "sensor.l"}); assert store.data["step"] == "zone_lamps"
-    sub(f, "zone_lamps", {"lamps": ["light.h1", "light.h2"]}); assert store.data["step"] == "groups_menu"
-    assert len(store.data["config"]["lamps"]) == 2
-    sub(f, "group_add", {"name": "All", "lamps": ["h1", "h2"]}); assert store.data["step"] == "groups_menu"
-    r = sub(f, "save", {})
-    assert r["type"] == "create_entry" and store.data is None
-
-
-def test_closing_the_dialog_and_coming_back_offers_to_resume_where_it_stopped():
-    store = draft.MemoryDraftStore()
-    f = Wizard(store)
-    sub(f, "global_sensors", {}); sub(f, "zone", {}); sub(f, "zone_name", {"name": "Hall"})
-    sub(f, "zone_sensors", {"illuminance": "sensor.l"}); sub(f, "zone_lamps", {"lamps": ["light.h1"]})
-    saved = store.data["config"]
-    g = Wizard(store, now=2000.0)                                            # a fresh flow = the dialog was reopened
-    r = sub(g, "user")
-    assert r["menu_options"] == ["resume_draft", "global_sensors", "preset_plan", "discard_draft"]
-    assert "Hall" in r["description_placeholders"]["draft"] and "1 lamp" in r["description_placeholders"]["draft"]
-    r = sub(g, "resume_draft")
-    assert r["type"] == "menu" and r["step_id"] == "groups_menu" and g.cfg == saved and g._zone == "hall"
-    sub(g, "group_add", {"name": "G", "lamps": ["h1"]})
-    assert sub(g, "save", {})["type"] == "create_entry" and store.data is None
-
-
-def test_resume_from_the_middle_of_a_zone_form_and_russian_note():
-    store = draft.MemoryDraftStore()
-    f = Wizard(store)
-    sub(f, "global_sensors", {}); sub(f, "zone", {"area": "bedroom"}); sub(f, "zone_name", {"name": "Bedroom"})   # stopped at zone_sensors
-    g = Wizard(store, now=1500.0); g.hass = types.SimpleNamespace(config=types.SimpleNamespace(language="ru"))
-    assert "Найдена незавершённая настройка" in sub(g, "user")["description_placeholders"]["draft"]
-    r = sub(g, "resume_draft")
-    assert r["step_id"] == "zone_sensors" and fields(r)["illuminance"] == "sensor.bed_lux"        # area prefill survives the resume
-
-
-def test_discard_and_expired_or_broken_drafts():
-    store = draft.MemoryDraftStore()
-    f = Wizard(store); sub(f, "global_sensors", {"radiation": "sensor.r"})
-    g = Wizard(store); r = sub(g, "discard_draft")
-    assert store.data is None and r["menu_options"] == ["global_sensors", "preset_plan"]
-    sub(f, "global_sensors", {"radiation": "sensor.r"})
-    old = Wizard(store, now=1000.0 + draft.DRAFT_MAX_AGE_S + 5)
-    assert sub(old, "user")["menu_options"] == ["global_sensors", "preset_plan"]                  # expired draft is ignored
-    store.data = {"version": 1, "ts": 1000.0, "config": {"zones": "garbage"}}
-    assert sub(Wizard(store), "user")["menu_options"] == ["global_sensors", "preset_plan"]
-    assert sub(Wizard(store), "resume_draft")["step_id"] == "user"                                # resume with nothing to resume
-
-
-def test_a_failing_draft_store_does_not_break_the_wizard():
-    class Broken(draft.MemoryDraftStore):
-        async def async_save(self, data): raise OSError("disk full")
-    f = Wizard(Broken())
-    sub(f, "global_sensors", {"radiation": "sensor.r"})
-    r = sub(f, "zone", {}); assert r["step_id"] == "zone_name"
-
-
-def test_preset_goes_to_save_and_clears_its_draft():
-    store = draft.MemoryDraftStore(); f = Wizard(store)
-    r = sub(f, "preset_plan"); assert r["step_id"] == "save" and store.data["step"] == "save"
-    assert sub(f, "save", {})["type"] == "create_entry" and store.data is None
-
-
-def test_zone_sensors_keep_one_presence_sensor_and_accept_several():
-    from adaptive_light.model import plan_living_room
-    f = Options(plan_living_room())
-    f._load()
-    f._zone = "living_room"
-    lux = "sensor.living_room_presence_sensor_light_sensor_light_level"
-    one = "binary_sensor.living_room_presence_sensor"
-    r = sub(f, "zone_sensors")
-    assert fields(r)["presence"] == [one]
-    sub(f, "zone_sensors", {"illuminance": lux, "presence": [one]})
-    got = [s["entity"] for s in f.cfg["sensors"] if s["role"] == "presence" and s["zone"] == "living_room"]
-    assert got == [one]
-    sub(f, "zone_sensors", {"illuminance": lux, "presence": [one, "binary_sensor.living_room_presence_sensor_entrance_zone"]})
-    got = [s["entity"] for s in f.cfg["sensors"] if s["role"] == "presence" and s["zone"] == "living_room"]
-    assert got == [one, "binary_sensor.living_room_presence_sensor_entrance_zone"]
-
-
-def _names(result):
-    return [str(k) for k in result["data_schema"].schema]
-
-
-def test_the_wizard_enters_one_rule_on_two_screens():
-    """Behaviour scenarios and extra settings write the same rule. No role fields."""
-    from adaptive_light.model import RULE_FIELDS
-    f = Wizard(draft.MemoryDraftStore())
-    sub(f, "global_sensors", {})
-    sub(f, "zone_name", {"name": "Hall"})
-    sub(f, "zone_sensors", {})
-    sub(f, "zone_lamps", {"lamps": ["light.hall_a", "light.hall_b"]})
-    menu = sub(f, "groups_menu")["menu_options"]
-    assert menu["zone_rules"] == "Behaviour scenarios" and menu["zone_extra"] == "Extra settings"
-    blocked = sub(f, "zone_extra")
-    assert blocked["errors"]["base"] == "rule_needs_scenario" and _names(blocked) == []
-    sub(f, "group_add", {"name": "Glow", "lamps": ["hall_a"], "share_pause": False})
-    form = sub(f, "zone_rules")
-    assert _names(form) == ["Group", "Below, lx", "Action", "Brightness, %", "Presence", "Time window"]
-    assert not {"sofa", "table", "fridge", "carpet"} & set(_names(form))
-    sub(f, "zone_rules", {
-        "Group": "glow", "Below, lx": 15, "Action": "step", "Brightness, %": 20,
-        "Presence": "yes", "Time window": "evening",
-    })
-    assert f.cfg["rules"] and set(f.cfg["rules"][0]) == set(RULE_FIELDS)
-    rule = f.cfg["rules"][0]
-    assert rule["zone"] == "hall" and rule["group"] == "glow"
-    assert rule["lux_below"] == 15 and rule["action"] == "step" and rule["pct"] == 20
-    assert rule["presence"] is True and rule["window"] == "evening"
-    extra = sub(f, "zone_extra")
-    assert _names(extra) == ["Group", "Minimum, %", "Maximum, %", "Gain", "Evening multiplier"]
-    sub(f, "zone_extra", {"Group": "glow", "Minimum, %": 0, "Maximum, %": 40, "Gain": 1, "Evening multiplier": 0.5})
-    saved = f.cfg["rules"]
-    assert len(saved) == 1 and set(saved[0]) == set(RULE_FIELDS)
-    assert saved[0]["lux_below"] == 15 and saved[0]["action"] == "step" and saved[0]["presence"] is True
-    assert saved[0]["max"] == 40 and saved[0]["evening_mult"] == 0.5
     HASS.config.language = "ru"
     try:
-        ru = sub(f, "zone_rules")
-        assert _names(ru)[0] == "Группа" and "Присутствие" in _names(ru) and "Окно времени" in _names(ru)
-        assert sub(f, "groups_menu")["menu_options"]["zone_extra"] == "Доп. настройки"
+        russian = Wizard()
+        assert names(sub(russian, "user")) == RU
+        assert sub(russian, "zone", _fill(RU, name="Кухня"))["menu_options"]["save"] == "Готово"
+        again = Options(created["data"]["config"])
+        assert sub(again, "init")["menu_options"]["add"] == "Добавить зону"
+        assert names(sub(again, "edit")) == RU
     finally:
         HASS.config.language = "en"
-    # the same two screens in the options flow of an already created zone
-    g = Options(f.cfg)
-    g._load()
-    g._zone = "hall"
-    opt = sub(g, "zone_menu")["menu_options"]
-    assert opt["zone_rules"] == "Behaviour scenarios" and opt["zone_extra"] == "Extra settings"
-    sub(g, "zone_rules", {
-        "Group": "glow", "Below, lx": 30, "Action": "target", "Brightness, %": 25,
-        "Presence": "no", "Time window": "",
-    })
-    again = g.cfg["rules"][0]
-    assert again["action"] == "target" and again["pct"] == 25 and again["presence"] is False and again["window"] == ""
-    assert again["max"] == 40 and again["evening_mult"] == 0.5
 
 
+def test_a_zone_without_lamps_or_presence_stays_on_the_form():
+    flow = Wizard()
+    result = sub(flow, "zone", _fill(EN, lamps=[], presence=[]))
+    assert result["step_id"] == "zone" and result["errors"]["Lamps"] == "need_lamps"
+    assert result["errors"]["Presence sensors"] == "need_presence"
+    assert flow.cfg["zones"] == []

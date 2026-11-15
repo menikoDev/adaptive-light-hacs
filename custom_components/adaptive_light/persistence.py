@@ -1,75 +1,29 @@
-"""Persisted runtime state as pure data (no Home Assistant imports).
-
-Independent of the configuration model: it only knows lamp *keys* (strings), so it keeps working whatever
-the final config flow looks like. ``HassStateStore`` is the thin adapter over homeassistant.helpers.storage.Store;
-tests use ``MemoryStore``.
-"""
+"""Which zones are enabled. Older runtime state (openness, pauses, coefficients) is ignored."""
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-STORE_VERSION = 2
+STORE_VERSION = 3
 SAVE_DELAY_S = 5.0
-
-
-def _num(v, default, lo=-math.inf, hi=math.inf):
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
-        return default
-    return min(max(float(v), lo), hi)
 
 
 @dataclass
 class PersistedState:
-    """Runtime state that must survive a restart. Lamp and zone keys are plain strings."""
-
-    pause_until: dict[str, float] = field(default_factory=dict)          # lamp key -> timestamp
-    openness: dict[str, tuple[float, int]] = field(default_factory=dict)  # zone key -> (value, low_count)
-    last_set_ts: float = 0.0
-    enabled: bool = False
-    apply: bool = False
-    scenarios: bool = True                                               # rules on/off; the controller keeps stepping lamps that are on
-    auto: dict[str, bool] = field(default_factory=dict)                  # lamp key -> switch
+    enabled: dict[str, bool] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "version": STORE_VERSION,
-            "pause_until": {k: v for k, v in self.pause_until.items() if v},
-            "openness": {z: {"value": v, "low_count": c} for z, (v, c) in self.openness.items()},
-            "last_set_ts": self.last_set_ts,
-            "enabled": self.enabled,
-            "apply": self.apply,
-            "scenarios": self.scenarios,
-            "auto": dict(self.auto),
-        }
+        return {"version": STORE_VERSION, "enabled": {k: v is True for k, v in self.enabled.items()}}
 
     @classmethod
-    def from_dict(cls, data: Any, *, now_ts: float, lamps: list[str] | None = None, zones: list[str] | None = None):
-        """Tolerant loader: wrong types are dropped, expired pauses ignored, keys that are no longer configured
-        (removed lamp or zone) are dropped so they cannot leave stale state behind."""
-        s = cls()
-        if not isinstance(data, dict):
-            return s
-        pauses = data.get("pause_until")
-        if isinstance(pauses, dict):
-            for k, v in pauses.items():
-                t = _num(v, 0.0)
-                if t > now_ts and (lamps is None or k in lamps):
-                    s.pause_until[k] = t
-        op = data.get("openness")
-        if isinstance(op, dict):
-            for z, d in op.items():
-                if isinstance(d, dict) and (zones is None or z in zones):
-                    s.openness[z] = (_num(d.get("value"), 100.0, 0.0, 100.0), int(_num(d.get("low_count"), 0, 0, 1000)))
-        s.last_set_ts = _num(data.get("last_set_ts"), 0.0)
-        s.enabled = data.get("enabled") is True
-        s.apply = data.get("apply") is True
-        s.scenarios = data.get("scenarios") is not False
-        au = data.get("auto")
-        if isinstance(au, dict):
-            s.auto = {k: v is True for k, v in au.items() if isinstance(k, str) and (lamps is None or k in lamps)}
-        return s
+    def from_dict(cls, data: Any, *, zones: list[str] | None = None) -> "PersistedState":
+        state = cls()
+        if not isinstance(data, dict) or not isinstance(data.get("enabled"), dict):
+            return state
+        for key, value in data["enabled"].items():
+            if isinstance(key, str) and (zones is None or key in zones):
+                state.enabled[key] = value is True
+        return state
 
 
 class StateStore(Protocol):
@@ -79,8 +33,6 @@ class StateStore(Protocol):
 
 
 class MemoryStore:
-    """Test double with the same surface as the HA Store adapter; ``delay_save`` just records the last payload."""
-
     def __init__(self, initial: Any = None):
         self.data = initial
         self.saves = 0
@@ -98,8 +50,6 @@ class MemoryStore:
 
 
 class HassStateStore:
-    """homeassistant.helpers.storage.Store wrapper (storage key per config entry). Not exercised by unit tests."""
-
     def __init__(self, hass, entry_id: str):
         from homeassistant.helpers.storage import Store
 
@@ -113,6 +63,3 @@ class HassStateStore:
 
     async def async_save(self, data):
         await self._store.async_save(data)
-
-    async def async_remove(self):
-        await self._store.async_remove()

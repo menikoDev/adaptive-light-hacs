@@ -1,518 +1,90 @@
 {
-  "title": "Adaptive Light",
   "config": {
+    "abort": {
+      "single_instance_allowed": "Adaptive Light is already configured"
+    },
+    "error": {
+      "need_name": "Enter a zone name",
+      "need_lamps": "Pick at least one lamp",
+      "need_presence": "Pick at least one presence sensor",
+      "bad_timeout": "Enter the off timeout in seconds",
+      "bad_lamp": "Lamps must be light entities",
+      "bad_presence": "Presence must be binary sensors",
+      "need_zone": "Add a zone"
+    },
     "step": {
-      "user": {
-        "title": "Set up",
-        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room). Progress is saved after every step, so closing this window by accident does not lose it.\n\n{draft}",
-        "menu_options": {
-          "global_sensors": "Step-by-step wizard",
-          "preset_plan": "Preset: living room of the YAML plan",
-          "resume_draft": "Continue the unfinished setup",
-          "discard_draft": "Discard the unfinished setup"
-        }
-      },
-      "global_sensors": {
-        "title": "Outdoor light",
-        "description": "Optional sensors that tell how bright it is outside. Without them the integration cannot compute the daylight factor.",
-        "data": {
-          "radiation": "Outdoor radiation sensor",
-          "elevation": "Sun elevation sensor (daylight source)",
-          "illuminance": "Illuminance sensor",
-          "presence": "Presence sensors",
-          "media": "TV / monitors"
-        }
-      },
       "zone": {
-        "title": "New zone",
-        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
+        "title": "Zone",
+        "description": "When any presence sensor turns on, the lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed.",
         "data": {
-          "area": "Area (optional)"
+          "Zone name": "Zone name",
+          "Lamps": "Lamps",
+          "Presence sensors": "Presence sensors",
+          "Off timeout, s": "Off timeout, s"
         }
       },
-      "new_zone": {
-        "title": "New zone",
-        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
-        "data": {
-          "area": "Area (optional)"
-        }
-      },
-      "zone_name": {
-        "title": "Name of the zone",
-        "description": "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
-        "data": {
-          "name": "Name",
-          "key": "Zone key (optional)"
-        }
-      },
-      "zone_sensors": {
-        "title": "Sensors of {zone}",
-        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate. Sensors found in the area are prefilled. Several presence sensors are allowed: the zone is occupied if any of them is on.",
-        "data": {
-          "radiation": "Outdoor radiation sensor",
-          "elevation": "Sun elevation sensor (daylight source)",
-          "illuminance": "Illuminance sensor",
-          "presence": "Presence sensors",
-          "media": "TV / monitors"
-        }
-      },
-      "zone_lamps": {
-        "title": "Lamps of {zone}",
-        "description": "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
-        "data": {
-          "lamps": "Lamps"
-        }
-      },
-      "group_add": {
-        "title": "New lamp group in {zone}",
-        "description": "A group shares settings. A lamp may be in several groups. A rule names the group it acts on.",
-        "data": {
-          "name": "Name",
-          "lamps": "Lamps",
-          "share_pause": "Manual change pauses the whole group"
-        }
-      },
-      "zone_rules": {
-        "title": "Behaviour scenarios of {zone}",
-        "description": "One rule: the lamp group, the lux threshold, and a step or a target. Presence is a trigger next to the lux reading. The time window is a condition. Minimum and maximum do not start the rule."
-      },
-      "zone_extra": {
-        "title": "Extra settings of {zone}",
-        "description": "Coefficients of the same rule. Minimum and maximum bound the action. Gain and the evening multiplier scale it. They do not start the rule. The group must already have a scenario."
-      },
-      "group_edit": {
-        "title": "Group {group}",
-        "description": "",
-        "data": {
-          "name": "Name",
-          "lamps": "Lamps",
-          "share_pause": "Manual change pauses the whole group"
-        }
-      },
-      "params": {
-        "title": "Parameters ({level}: {target})",
-        "description": "Empty field = inherit from the level above (global, zone, group, lamp).",
-        "data": {
-          "target_lux_day": "Target lux, day",
-          "target_lux_evening": "Target lux, evening",
-          "w_outdoor": "Weight of outdoor light",
-          "w_indoor": "Weight of indoor light",
-          "evening_start_hour": "Evening starts at (hour)",
-          "scene_work": "Scene multiplier: work",
-          "scene_bright": "Scene multiplier: bright",
-          "scene_soft": "Scene multiplier: soft",
-          "need_blind": "Need when blinded (no trust in lux)",
-          "override_minutes": "Manual override pause, minutes",
-          "mode_entity": "Mode entity (input_select with Day/Evening/Night/Movie)",
-          "scene_entity": "Scene entity (Work/Bright/Soft)",
-          "min": "Minimum brightness, %",
-          "max": "Maximum brightness, %",
-          "gain": "Gain",
-          "evening_mult": "Evening multiplier",
-          "w_out": "Lamp weight outdoor (-1 = inherit)",
-          "w_in": "Lamp weight indoor (-1 = inherit)",
-          "scene_scaled": "Scale by scene",
-          "work_hours_only": "Switch on only in work hours",
-          "legacy_ratio": "Legacy ratio (desk scenes)",
-          "ctrl_modes": "Controller works in modes (comma separated)",
-          "fridge_block": "Do not adjust while fridge zone is active",
-          "k": "Lux per 1% (set by hand)",
-          "dark_lux_offset": "Dark lux offset",
-          "blind_lux_floor": "Blind lux floor",
-          "open_k": "Open-window k",
-          "open_min_daylight": "Min daylight for openness",
-          "open_hyst": "Openness hysteresis",
-          "open_confirm": "Openness confirm ticks",
-          "radiation_full_scale": "Radiation for 100% daylight, W/m2",
-          "step_pct": "Controller step, %",
-          "threshold_pct": "Controller threshold, %",
-          "transition_s": "Transition, s"
-        }
-      },
-      "pick_zone": {
-        "title": "Pick a zone",
-        "description": "",
-        "data": {
-          "zone": "Zone"
-        }
-      },
-      "pick_lamp": {
-        "title": "Pick a lamp",
-        "description": "",
-        "data": {
-          "lamp": "Lamp"
-        }
-      },
-      "pick_group": {
-        "title": "Pick a group",
-        "description": "",
-        "data": {
-          "group": "Group"
-        }
-      },
-      "zone_remove": {
-        "title": "Remove {zone}?",
-        "description": "Its lamps, groups and sensors are removed from the configuration."
-      },
-      "lamp_remove": {
-        "title": "Remove {lamp}?",
-        "description": ""
-      },
-      "group_remove": {
-        "title": "Remove {group}?",
-        "description": ""
-      },
-      "save": {
-        "title": "Review",
-        "description": "{summary}\n\n{detail}"
-      },
-      "groups_menu": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "group_add": "Add a lamp group",
-          "zone_rules": "Behaviour scenarios",
-          "zone_extra": "Extra settings",
-          "more_zones": "Continue"
-        }
-      },
-      "more_zones": {
-        "title": "Adaptive Light",
+      "more": {
+        "title": "Another zone",
+        "description": "Add another room, or finish.",
         "menu_options": {
           "zone": "Add another zone",
           "save": "Finish"
         }
       },
-      "init": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "global_sensors": "Outdoor sensors",
-          "global_params": "Global parameters",
-          "pick_zone": "Edit a zone",
-          "new_zone": "Add a zone",
-          "pick_lamp": "Edit a lamp",
-          "pick_group": "Edit a group",
-          "save": "Save and apply"
-        }
-      },
-      "zone_menu": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "zone_sensors": "Sensors",
-          "zone_lamps": "Add lamps",
-          "group_add": "Add a group",
-          "zone_params": "Zone parameters",
-          "zone_rules": "Behaviour scenarios",
-          "zone_extra": "Extra settings",
-          "zone_remove": "Remove zone",
-          "init": "Back"
-        }
-      },
-      "lamp_menu": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "lamp_params": "Lamp parameters",
-          "lamp_remove": "Remove lamp",
-          "init": "Back"
-        }
-      },
-      "group_menu": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "group_edit": "Name and lamps",
-          "group_params": "Group parameters",
-          "group_remove": "Remove group",
-          "init": "Back"
-        }
+      "save": {
+        "title": "Finish",
+        "description": "Save the zones."
       }
-    },
-    "error": {
-      "bad_key": "Invalid key",
-      "duplicate_key": "Duplicate key",
-      "duplicate_lamp_entity": "The same light is used twice",
-      "unknown_zone": "Unknown zone",
-      "unknown_lamp": "Unknown lamp",
-      "lamp_zone_mismatch": "A group mixes lamps of different zones",
-      "bad_role": "Unknown sensor role",
-      "role_zone_mismatch": "Sensor role does not fit its zone",
-      "bad_sensor_domain": "The entity type does not fit the role",
-      "zone_needs_name": "Enter a zone name",
-      "no_zones": "Add at least one zone",
-      "group_needs_lamps": "Pick at least one lamp",
-      "bad_rule": "Invalid rule",
-      "rule_needs_group": "Add a lamp group first",
-      "rule_needs_scenario": "Add a behaviour scenario first"
-    },
-    "abort": {
-      "single_instance_allowed": "Already configured."
     }
   },
   "options": {
+    "error": {
+      "need_name": "Enter a zone name",
+      "need_lamps": "Pick at least one lamp",
+      "need_presence": "Pick at least one presence sensor",
+      "bad_timeout": "Enter the off timeout in seconds",
+      "bad_lamp": "Lamps must be light entities",
+      "bad_presence": "Presence must be binary sensors",
+      "need_zone": "Add a zone"
+    },
     "step": {
-      "user": {
-        "title": "Set up",
-        "description": "Build the configuration step by step or start from the preset of the YAML plan (living room). Progress is saved after every step, so closing this window by accident does not lose it.\n\n{draft}",
-        "menu_options": {
-          "global_sensors": "Step-by-step wizard",
-          "preset_plan": "Preset: living room of the YAML plan",
-          "resume_draft": "Continue the unfinished setup",
-          "discard_draft": "Discard the unfinished setup"
-        }
-      },
-      "global_sensors": {
-        "title": "Outdoor light",
-        "description": "Optional sensors that tell how bright it is outside. Without them the integration cannot compute the daylight factor.",
-        "data": {
-          "radiation": "Outdoor radiation sensor",
-          "elevation": "Sun elevation sensor (daylight source)",
-          "illuminance": "Illuminance sensor",
-          "presence": "Presence sensors",
-          "media": "TV / monitors"
-        }
-      },
-      "zone": {
-        "title": "New zone",
-        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
-        "data": {
-          "area": "Area (optional)"
-        }
-      },
-      "new_zone": {
-        "title": "New zone",
-        "description": "A zone is one room. Pick one of your Home Assistant areas to prefill its name, key, lamps and sensors, or leave the field empty for a custom zone.",
-        "data": {
-          "area": "Area (optional)"
-        }
-      },
-      "zone_name": {
-        "title": "Name of the zone",
-        "description": "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
-        "data": {
-          "name": "Name",
-          "key": "Zone key (optional)"
-        }
-      },
-      "zone_sensors": {
-        "title": "Sensors of {zone}",
-        "description": "All optional. Without an illuminance sensor the zone uses a daylight-only estimate. Sensors found in the area are prefilled. Several presence sensors are allowed: the zone is occupied if any of them is on.",
-        "data": {
-          "radiation": "Outdoor radiation sensor",
-          "elevation": "Sun elevation sensor (daylight source)",
-          "illuminance": "Illuminance sensor",
-          "presence": "Presence sensors",
-          "media": "TV / monitors"
-        }
-      },
-      "zone_lamps": {
-        "title": "Lamps of {zone}",
-        "description": "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
-        "data": {
-          "lamps": "Lamps"
-        }
-      },
-      "group_add": {
-        "title": "New lamp group in {zone}",
-        "description": "A group shares settings. A lamp may be in several groups. A rule names the group it acts on.",
-        "data": {
-          "name": "Name",
-          "lamps": "Lamps",
-          "share_pause": "Manual change pauses the whole group"
-        }
-      },
-      "zone_rules": {
-        "title": "Behaviour scenarios of {zone}",
-        "description": "One rule: the lamp group, the lux threshold, and a step or a target. Presence is a trigger next to the lux reading. The time window is a condition. Minimum and maximum do not start the rule."
-      },
-      "zone_extra": {
-        "title": "Extra settings of {zone}",
-        "description": "Coefficients of the same rule. Minimum and maximum bound the action. Gain and the evening multiplier scale it. They do not start the rule. The group must already have a scenario."
-      },
-      "group_edit": {
-        "title": "Group {group}",
-        "description": "",
-        "data": {
-          "name": "Name",
-          "lamps": "Lamps",
-          "share_pause": "Manual change pauses the whole group"
-        }
-      },
-      "params": {
-        "title": "Parameters ({level}: {target})",
-        "description": "Empty field = inherit from the level above (global, zone, group, lamp).",
-        "data": {
-          "target_lux_day": "Target lux, day",
-          "target_lux_evening": "Target lux, evening",
-          "w_outdoor": "Weight of outdoor light",
-          "w_indoor": "Weight of indoor light",
-          "evening_start_hour": "Evening starts at (hour)",
-          "scene_work": "Scene multiplier: work",
-          "scene_bright": "Scene multiplier: bright",
-          "scene_soft": "Scene multiplier: soft",
-          "need_blind": "Need when blinded (no trust in lux)",
-          "override_minutes": "Manual override pause, minutes",
-          "mode_entity": "Mode entity (input_select with Day/Evening/Night/Movie)",
-          "scene_entity": "Scene entity (Work/Bright/Soft)",
-          "min": "Minimum brightness, %",
-          "max": "Maximum brightness, %",
-          "gain": "Gain",
-          "evening_mult": "Evening multiplier",
-          "w_out": "Lamp weight outdoor (-1 = inherit)",
-          "w_in": "Lamp weight indoor (-1 = inherit)",
-          "scene_scaled": "Scale by scene",
-          "work_hours_only": "Switch on only in work hours",
-          "legacy_ratio": "Legacy ratio (desk scenes)",
-          "ctrl_modes": "Controller works in modes (comma separated)",
-          "fridge_block": "Do not adjust while fridge zone is active",
-          "k": "Lux per 1% (set by hand)",
-          "dark_lux_offset": "Dark lux offset",
-          "blind_lux_floor": "Blind lux floor",
-          "open_k": "Open-window k",
-          "open_min_daylight": "Min daylight for openness",
-          "open_hyst": "Openness hysteresis",
-          "open_confirm": "Openness confirm ticks",
-          "radiation_full_scale": "Radiation for 100% daylight, W/m2",
-          "step_pct": "Controller step, %",
-          "threshold_pct": "Controller threshold, %",
-          "transition_s": "Transition, s"
-        }
-      },
-      "pick_zone": {
-        "title": "Pick a zone",
-        "description": "",
-        "data": {
-          "zone": "Zone"
-        }
-      },
-      "pick_lamp": {
-        "title": "Pick a lamp",
-        "description": "",
-        "data": {
-          "lamp": "Lamp"
-        }
-      },
-      "pick_group": {
-        "title": "Pick a group",
-        "description": "",
-        "data": {
-          "group": "Group"
-        }
-      },
-      "zone_remove": {
-        "title": "Remove {zone}?",
-        "description": "Its lamps, groups and sensors are removed from the configuration."
-      },
-      "lamp_remove": {
-        "title": "Remove {lamp}?",
-        "description": ""
-      },
-      "group_remove": {
-        "title": "Remove {group}?",
-        "description": ""
-      },
-      "save": {
-        "title": "Review",
-        "description": "{summary}\n\n{detail}"
-      },
-      "groups_menu": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "group_add": "Add a lamp group",
-          "zone_rules": "Behaviour scenarios",
-          "zone_extra": "Extra settings",
-          "more_zones": "Continue"
-        }
-      },
-      "more_zones": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "zone": "Add another zone",
-          "save": "Finish"
-        }
-      },
       "init": {
         "title": "Adaptive Light",
+        "description": "Edit a zone or add one. A zone is a name, lamps, presence sensors, and an off timeout.",
         "menu_options": {
-          "global_sensors": "Outdoor sensors",
-          "global_params": "Global parameters",
-          "pick_zone": "Edit a zone",
-          "new_zone": "Add a zone",
-          "pick_lamp": "Edit a lamp",
-          "pick_group": "Edit a group",
-          "save": "Save and apply"
+          "pick": "Edit a zone",
+          "add": "Add a zone"
+        }
+      },
+      "pick": {
+        "title": "Zone",
+        "description": "Choose the zone to edit.",
+        "data": {
+          "Zone": "Zone"
         }
       },
       "zone_menu": {
-        "title": "Adaptive Light",
+        "title": "{zone}",
         "menu_options": {
-          "zone_sensors": "Sensors",
-          "zone_lamps": "Add lamps",
-          "group_add": "Add a group",
-          "zone_params": "Zone parameters",
-          "zone_rules": "Behaviour scenarios",
-          "zone_extra": "Extra settings",
-          "zone_remove": "Remove zone",
+          "edit": "Edit",
+          "remove": "Remove zone",
           "init": "Back"
         }
       },
-      "lamp_menu": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "lamp_params": "Lamp parameters",
-          "lamp_remove": "Remove lamp",
-          "init": "Back"
+      "zone": {
+        "title": "Zone",
+        "description": "When any presence sensor turns on, the lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed.",
+        "data": {
+          "Zone name": "Zone name",
+          "Lamps": "Lamps",
+          "Presence sensors": "Presence sensors",
+          "Off timeout, s": "Off timeout, s"
         }
       },
-      "group_menu": {
-        "title": "Adaptive Light",
-        "menu_options": {
-          "group_edit": "Name and lamps",
-          "group_params": "Group parameters",
-          "group_remove": "Remove group",
-          "init": "Back"
-        }
+      "remove": {
+        "title": "Remove {zone}?",
+        "description": "The zone is removed. Its lamps are left as they are."
       }
-    },
-    "error": {
-      "bad_key": "Invalid key",
-      "duplicate_key": "Duplicate key",
-      "duplicate_lamp_entity": "The same light is used twice",
-      "unknown_zone": "Unknown zone",
-      "unknown_lamp": "Unknown lamp",
-      "lamp_zone_mismatch": "A group mixes lamps of different zones",
-      "bad_role": "Unknown sensor role",
-      "role_zone_mismatch": "Sensor role does not fit its zone",
-      "bad_sensor_domain": "The entity type does not fit the role",
-      "zone_needs_name": "Enter a zone name",
-      "no_zones": "Add at least one zone",
-      "group_needs_lamps": "Pick at least one lamp",
-      "bad_rule": "Invalid rule",
-      "rule_needs_group": "Add a lamp group first",
-      "rule_needs_scenario": "Add a behaviour scenario first"
-    }
-  },
-  "selector": {
-    "yes_no": {
-      "options": {
-        "yes": "Yes",
-        "no": "No"
-      }
-    }
-  },
-  "services": {
-    "controller_tick": {
-      "name": "Run controller tick",
-      "description": "Run controller tick"
-    },
-    "clear_pauses": {
-      "name": "Clear manual pauses",
-      "description": "Clear manual pauses"
-    },
-    "openness_reset": {
-      "name": "Reset openness",
-      "description": "Reset openness"
-    },
-    "set_param": {
-      "name": "Set a parameter",
-      "description": "Set a parameter"
     }
   }
 }
