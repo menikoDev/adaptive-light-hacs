@@ -22,9 +22,9 @@ _spec.loader.exec_module(cf)
 from adaptive_light.const import CONF_CONFIG  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-EN = ["Zone name", "Lamps", "Presence sensors", "Off timeout, s"]
-RU = ["Название зоны", "Лампы", "Датчики присутствия", "Таймаут выключения, с"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "off_timeout"}
+EN = ["Zone name", "Lamps", "Presence sensors", "Off timeout, s", "Night mode", "Night from", "Night until", "Still, min"]
+RU = ["Название зоны", "Лампы", "Датчики присутствия", "Таймаут выключения, с", "Ночной режим", "Ночь с", "Ночь до", "Без движения, мин"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
 def run(coro):

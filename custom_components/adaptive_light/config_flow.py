@@ -20,12 +20,20 @@ LABELS = {
         "lamps": "Lamps",
         "presence": "Presence sensors",
         "off_timeout": "Off timeout, s",
+        "night": "Night mode",
+        "night_start": "Night from",
+        "night_end": "Night until",
+        "night_still": "Still, min",
     },
     "ru": {
         "name": "Название зоны",
         "lamps": "Лампы",
         "presence": "Датчики присутствия",
         "off_timeout": "Таймаут выключения, с",
+        "night": "Ночной режим",
+        "night_start": "Ночь с",
+        "night_end": "Ночь до",
+        "night_still": "Без движения, мин",
     },
 }
 
@@ -42,6 +50,21 @@ def _as_list(value: Any) -> list[str]:
         if isinstance(item, str) and item and item not in out:
             out.append(item)
     return out
+
+
+def _hhmm(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    parts = value.strip().split(":")
+    if len(parts) < 2:
+        return None
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return f"{hour:02d}:{minute:02d}"
 
 
 def _timeout(value: Any) -> int | None:
@@ -119,7 +142,18 @@ class _Fields:
             )),
             current.get("off_timeout", 60),
         )
-        return vol.Schema({name: name_sel, lamps: lamp_sel, presence: presence_sel, timeout: timeout_sel})
+        night, night_sel = self._field("night", sel.BooleanSelector(), current.get("night") is True)
+        start, start_sel = self._field("night_start", sel.TimeSelector(), current.get("night_start") or "02:00")
+        end, end_sel = self._field("night_end", sel.TimeSelector(), current.get("night_end") or "06:00")
+        still, still_sel = self._field(
+            "night_still",
+            sel.NumberSelector(sel.NumberSelectorConfig(min=1, max=720, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX)),
+            current.get("night_still", 60),
+        )
+        return vol.Schema({
+            name: name_sel, lamps: lamp_sel, presence: presence_sel, timeout: timeout_sel,
+            night: night_sel, start: start_sel, end: end_sel, still: still_sel,
+        })
 
     def _parse(self, user_input: dict) -> tuple[dict | None, dict]:
         labels = self._labels()
@@ -140,9 +174,20 @@ class _Fields:
             errors[labels["presence"]] = "bad_presence"
         if timeout is None:
             errors[labels["off_timeout"]] = "bad_timeout"
+        night = user_input.get(labels["night"]) is True
+        start = _hhmm(user_input.get(labels["night_start"])) or "02:00"
+        end = _hhmm(user_input.get(labels["night_end"])) or "06:00"
+        still = _timeout(user_input.get(labels["night_still"]))
+        if still is None:
+            still = 60
+        if still < 1:
+            errors[labels["night_still"]] = "bad_timeout"
         if errors:
             return None, errors
-        return {"name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout}, {}
+        return {
+            "name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout,
+            "night": night, "night_start": start, "night_end": end, "night_still": still,
+        }, {}
 
     def _store(self, parsed: dict) -> str:
         if not self._zone:

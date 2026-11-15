@@ -12,12 +12,16 @@
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed. Another zone is added as another entry.",
+        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed. Another zone is added as another entry.",
         "data": {
           "Zone name": "Zone name",
           "Lamps": "Lamps",
           "Presence sensors": "Presence sensors",
-          "Off timeout, s": "Off timeout, s"
+          "Off timeout, s": "Off timeout, s",
+          "Night mode": "Night mode",
+          "Night from": "Night from",
+          "Night until": "Night until",
+          "Still, min": "Still, min"
         }
       }
     }
@@ -35,12 +39,16 @@
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Brightness and color are not changed.",
+        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on. When all of them have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed.",
         "data": {
           "Zone name": "Zone name",
           "Lamps": "Lamps",
           "Presence sensors": "Presence sensors",
-          "Off timeout, s": "Off timeout, s"
+          "Off timeout, s": "Off timeout, s",
+          "Night mode": "Night mode",
+          "Night from": "Night from",
+          "Night until": "Night until",
+          "Still, min": "Still, min"
         }
       }
     }

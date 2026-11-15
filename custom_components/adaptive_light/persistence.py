@@ -15,12 +15,14 @@ SAVE_DELAY_S = 5.0
 class PersistedState:
     enabled: dict[str, bool] = field(default_factory=dict)
     manual_off: set[str] = field(default_factory=set)
+    night_hold: set[str] = field(default_factory=set)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "version": STORE_VERSION,
             "enabled": {k: v is True for k, v in self.enabled.items()},
             "manual_off": sorted(self.manual_off),
+            "night_hold": sorted(self.night_hold),
         }
 
     @classmethod
@@ -39,6 +41,9 @@ class PersistedState:
                 item for item in manual
                 if isinstance(item, str) and (lamps is None or item in lamps)
             }
+        held = data.get("night_hold")
+        if isinstance(held, list):
+            state.night_hold = {item for item in held if isinstance(item, str) and (zones is None or item in zones)}
         return state
 
 

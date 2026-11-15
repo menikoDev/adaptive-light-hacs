@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from .control import decide
+from .control import decide, in_night_window
 from .model import Config
 from .persistence import PersistedState
 
@@ -16,13 +16,17 @@ _SERVICE = {"on": "turn_on", "off": "turn_off"}
 
 
 class AdaptiveLightManager:
-    def __init__(self, hass, raw: dict, store=None, now: Callable[[], float] | None = None) -> None:
+    def __init__(self, hass, raw: dict, store=None, now: Callable[[], float] | None = None, local_now: Callable | None = None) -> None:
         self.hass = hass
         self.cfg = Config.from_dict(raw)
         self.store = store
         self._now = now or time.time
+        self._local_now = local_now
         self.enabled: dict[str, bool] = {zone: True for zone in self.cfg.zone_order}
         self.manual_off: set[str] = set()
+        self._night_hold: set[str] = set()
+        self._last_motion: dict[str, float] = {}
+        self._seen: dict[str, bool] = {}
         self._off_since: dict[str, float] = {}
         self._expect: dict[str, str] = {}
         self._own_contexts: set[str] = set()
@@ -57,6 +61,7 @@ class AdaptiveLightManager:
         )
         self.enabled.update(saved.enabled)
         self.manual_off = set(saved.manual_off)
+        self._night_hold = set(saved.night_hold)
 
     def save(self) -> None:
         if self.store is None:
@@ -64,7 +69,7 @@ class AdaptiveLightManager:
         self.store.async_delay_save(self._snapshot)
 
     def _snapshot(self) -> dict:
-        return PersistedState(dict(self.enabled), set(self.manual_off)).to_dict()
+        return PersistedState(dict(self.enabled), set(self.manual_off), set(self._night_hold)).to_dict()
 
     async def apply(self, zone: str) -> str:
         """Apply the presence rule. Service data is only the lamp entity ids."""
@@ -75,6 +80,19 @@ class AdaptiveLightManager:
             self._notify()
             return "disabled"
         spec = self.cfg.zones[zone]
+        if not spec.get("night"):
+            self._night_hold.discard(zone)
+        rising = self._rising(zone)
+        if rising:
+            self._last_motion[zone] = self.now()
+            if zone in self._night_hold:
+                self._night_hold.discard(zone)
+                self.save()
+        if self._night_quiet(zone, spec):
+            self._off_since.pop(zone, None)
+            await self._set_lamps(spec["lamps"], "off")
+            self._notify()
+            return "night"
         command, since = decide(self.occupied(zone), self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
         if since is None:
             self._off_since.pop(zone, None)
@@ -84,6 +102,57 @@ class AdaptiveLightManager:
             await self._set_lamps(spec["lamps"], command)
         self._notify()
         return command
+
+    def _rising(self, zone: str) -> bool:
+        edge = False
+        for entity in self.cfg.zones[zone]["presence"]:
+            on = self.is_on(entity)
+            if on and self._seen.get(entity) is False:
+                edge = True
+            self._seen[entity] = on
+        return edge
+
+    def _in_night(self, spec: dict) -> bool:
+        if not spec.get("night"):
+            return False
+        hour, minute = self._clock()
+        return in_night_window(hour, minute, spec["night_start"], spec["night_end"])
+
+    def _clock(self) -> tuple[int, int]:
+        if self._local_now is not None:
+            current = self._local_now()
+            return current.hour, current.minute
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        tzname = getattr(getattr(self.hass, "config", None), "time_zone", None) or "UTC"
+        try:
+            tz = ZoneInfo(str(tzname))
+        except Exception:
+            tz = ZoneInfo("UTC")
+        current = datetime.now(tz)
+        return current.hour, current.minute
+
+    def _night_quiet(self, zone: str, spec: dict) -> bool:
+        """Hold the lamps off after an hour without new movement inside the night window.
+
+        A presence sensor that stays on does not count as movement. The next rising edge
+        clears the hold. Outside the window the hold, once started, still waits for movement
+        so the lamps do not come back on just because morning arrived.
+        """
+        if zone in self._night_hold:
+            return True
+        if not self._in_night(spec) or not self.occupied(zone):
+            return False
+        last = self._last_motion.get(zone)
+        if last is None:
+            self._last_motion[zone] = self.now()
+            return False
+        if self.now() - last < float(spec["night_still"]) * 60:
+            return False
+        self._night_hold.add(zone)
+        self.save()
+        return True
 
     async def _set_lamps(self, lamps: list[str], want: str) -> None:
         need = []
@@ -156,11 +225,10 @@ class AdaptiveLightManager:
         from homeassistant.helpers.event import async_call_later
 
         self.cancel_timer(zone)
-        since = self._off_since.get(zone)
-        if since is None or not self.enabled.get(zone, True):
+        if not self.enabled.get(zone, True):
             return
-        delay = float(self.cfg.zones[zone]["off_timeout"]) - (self.now() - since)
-        if delay <= 0:
+        delay = self._pending_delay(zone)
+        if delay is None or delay <= 0:
             return
 
         async def _fire(_now: Any) -> None:
@@ -169,6 +237,19 @@ class AdaptiveLightManager:
             self._arm(zone)
 
         self._timers[zone] = async_call_later(self.hass, delay, _fire)
+
+    def _pending_delay(self, zone: str) -> float | None:
+        spec = self.cfg.zones[zone]
+        delays: list[float] = []
+        since = self._off_since.get(zone)
+        if since is not None:
+            delays.append(float(spec["off_timeout"]) - (self.now() - since))
+        if zone not in self._night_hold and self._in_night(spec) and self.occupied(zone):
+            last = self._last_motion.get(zone)
+            if last is not None:
+                delays.append(float(spec["night_still"]) * 60 - (self.now() - last))
+        pending = [item for item in delays if item > 0]
+        return min(pending) if pending else None
 
     async def _on_event(self, event) -> None:
         entity = event.data.get("entity_id")

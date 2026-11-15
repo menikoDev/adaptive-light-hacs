@@ -1,7 +1,8 @@
 """Configuration: zones only.
 
 A zone has a name, one or more lamps, one or more presence sensors, and an off timeout
-in seconds. Anything else in an older config (rules, groups, coefficients, sensors) is dropped.
+in seconds. Night mode is optional: during its window, an hour without new movement
+turns the lamps off even if a presence sensor stays on. Older shapes are dropped.
 """
 from __future__ import annotations
 
@@ -34,6 +35,28 @@ def _timeout(value: Any) -> int | None:
     return number
 
 
+def _clock(value: Any, default: str) -> str:
+    if not isinstance(value, str):
+        return default
+    parts = value.strip().split(":")
+    if len(parts) < 2:
+        return default
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError:
+        return default
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return default
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _still(value: Any) -> int:
+    number = _timeout(value)
+    if number is None or number < 1:
+        return 60
+    return min(number, 24 * 60)
+
+
 def _entities(value: Any, domain: str) -> list[str] | None:
     if isinstance(value, str):
         value = [value]
@@ -61,7 +84,13 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     timeout = _timeout(raw.get("off_timeout"))
     if lamps is None or presence is None or timeout is None:
         return None
-    return {"key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout}
+    return {
+        "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
+        "night": raw.get("night") is True,
+        "night_start": _clock(raw.get("night_start"), "02:00"),
+        "night_end": _clock(raw.get("night_end"), "06:00"),
+        "night_still": _still(raw.get("night_still")),
+    }
 
 
 def normalise(raw: Any) -> dict:
