@@ -20,6 +20,8 @@ sys.modules["adaptive_light.config_flow"] = cf
 _spec.loader.exec_module(cf)
 
 from adaptive_light.const import CONF_CONFIG  # noqa: E402
+from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
+from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
 EN = ["Zone name", "Lamps", "Presence sensors", "Off timeout, s", "Night mode", "Night from", "Night until", "Still, min"]
@@ -115,7 +117,9 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
         }],
     }
     options = Options(cfg)
-    form = sub(options, "init")
+    menu = sub(options, "init")
+    assert menu["type"] == "menu" and menu["menu_options"] == ["zone", "momentary"]
+    form = sub(options, "zone")
     assert form["type"] == "form" and form["step_id"] == "zone"
     assert names(form) == EN
     saved = sub(options, "zone", _fill(EN, name="Hall renamed", lamps=["light.a"], presence=["binary_sensor.p", "binary_sensor.q"], timeout=10))
@@ -131,9 +135,84 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
         russian = Wizard()
         assert names(sub(russian, "user")) == RU
         ru_options = Options(cfg)
-        assert names(sub(ru_options, "init")) == RU
+        assert names(sub(ru_options, "zone")) == RU
     finally:
         HASS.config.language = "en"
+
+
+class _States:
+    def __init__(self):
+        self._data = {}
+
+    def get(self, entity):
+        return self._data.get(entity)
+
+    def set(self, entity, state):
+        self._data[entity] = types.SimpleNamespace(state=state)
+
+
+class _Services:
+    def __init__(self):
+        self.calls = []
+
+    async def async_call(self, domain, service, data, **kwargs):
+        self.calls.append((domain, service, dict(data)))
+
+
+def test_the_flow_saves_the_four_fields_and_a_yaml_zone_still_loads():
+    flow = Wizard()
+    created = sub(flow, "zone", _fill(EN, name="Hall", lamps=["light.a"], presence=["binary_sensor.p"], timeout=12))
+    zone = created["data"]["config"]["zones"][0]
+    assert zone["name"] == "Hall"
+    assert zone["lamps"] == ["light.a"]
+    assert zone["presence"] == ["binary_sensor.p"]
+    assert zone["off_timeout"] == 12
+
+    raw = {"version": 5, "zones": [{
+        "key": "hall", "name": "Hall", "lamps": ["light.a"],
+        "presence": ["binary_sensor.p"], "off_timeout": 12,
+    }]}
+    loaded = Config.from_dict(raw)
+    assert loaded.zones["hall"]["lamps"] == ["light.a"]
+    assert loaded.zones["hall"]["presence"] == ["binary_sensor.p"]
+    assert loaded.zones["hall"]["off_timeout"] == 12
+    assert loaded.zones["hall"]["night"] is False
+    home = types.SimpleNamespace(states=_States(), services=_Services())
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off")
+    mgr = AdaptiveLightManager(home, raw)
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a"]})]
+
+
+def test_options_can_edit_a_momentary_action_and_saving_the_zone_keeps_it():
+    cfg = {
+        "version": 5,
+        "zones": [{
+            "key": "hall", "name": "Hall", "lamps": ["light.a"],
+            "presence": ["binary_sensor.p"], "off_timeout": 45,
+        }],
+        "momentary_actions": [{
+            "key": "fridge", "lamp": "light.kitchen", "color": "red", "duration": 5, "return": "restore",
+            "trigger": {"type": "sensor", "entity_id": "binary_sensor.door"},
+        }],
+    }
+    options = Options(cfg)
+    form = sub(options, "momentary")
+    assert form["type"] == "form" and names(form) == ["Lamp", "Color", "Duration, s", "Return"]
+    saved = sub(options, "momentary", {"Lamp": "light.kitchen", "Color": "white", "Duration, s": 8, "Return": "off"})
+    action = saved["data"]["config"]["momentary_actions"][0]
+    assert action["lamp"] == "light.kitchen" and action["color"] == "white"
+    assert action["duration"] == 8 and action["return"] == "off"
+    assert action["trigger"] == {"type": "sensor", "entity_id": "binary_sensor.door"}
+    assert saved["data"]["config"]["zones"][0]["key"] == "hall"
+
+    again = Options(saved["data"]["config"])
+    sub(again, "init")
+    kept = sub(again, "zone", _fill(EN, name="Hall", lamps=["light.a"], presence=["binary_sensor.p"], timeout=15))
+    assert kept["data"]["config"]["zones"][0]["off_timeout"] == 15
+    assert kept["data"]["config"]["momentary_actions"][0]["color"] == "white"
+    assert kept["data"]["config"]["momentary_actions"][0]["trigger"]["entity_id"] == "binary_sensor.door"
 
 
 def test_a_zone_without_lamps_or_presence_stays_on_the_form():

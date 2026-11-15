@@ -51,6 +51,35 @@ def keep_section(cfg: dict, source: Any) -> dict:
     return stored
 
 
+def write_action(cfg: dict, key: str | None, fields: dict) -> str:
+    """Insert or replace one action. Other actions, and a trigger already on this one, stay."""
+    actions = parse_actions(cfg)
+    target = next((action for action in actions if key and action["key"] == key), None)
+    used = {action["key"] for action in actions if target is None or action["key"] != target["key"]}
+    new_key = target["key"] if target else _unique(_slug(str(fields["lamp"])), used)
+    updated = {
+        "key": new_key,
+        "lamp": fields["lamp"],
+        "color": str(fields["color"]).strip(),
+        "duration": int(fields["duration"]),
+        "return": fields["return"],
+        "trigger_type": target["trigger_type"] if target else "service",
+        "trigger_entity": target["trigger_entity"] if target else None,
+    }
+    stored: list[dict] = []
+    replaced = False
+    for action in actions:
+        if target and action["key"] == target["key"]:
+            stored.append(_public(updated))
+            replaced = True
+        else:
+            stored.append(_public(action))
+    if not replaced:
+        stored.append(_public(updated))
+    cfg["momentary_actions"] = stored
+    return new_key
+
+
 def _public(action: dict) -> dict:
     out = {
         "key": action["key"],
