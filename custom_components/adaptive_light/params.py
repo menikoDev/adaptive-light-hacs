@@ -50,7 +50,6 @@ PARAMS: dict[str, Spec] = {
     "legacy_ratio": Spec(1.0, lo=0.05, hi=1, step=0.05, levels=_LAMPISH),
     "ctrl_modes": Spec("Day,Evening", kind="text", levels=_LAMPISH),
     "fridge_block": Spec(0, kind="bool", levels=_LAMPISH),
-    "calib_levels": Spec("20,50,80", kind="text", levels=_LAMPISH),
     "k": Spec(0.1, lo=0.001, hi=100, step=0.001, unit="lx", levels=_LAMP_ONLY),
     # per zone sensors and blinds (a lamp cannot differ from its zone here)
     "dark_lux_offset": Spec(0, lo=0, hi=20, step=0.1, unit="lx", levels=_ZONE_ONLY),
@@ -67,7 +66,7 @@ PARAMS: dict[str, Spec] = {
 }
 
 LAMP_PARAM_NAMES = ("min", "max", "gain", "evening_mult", "w_out", "w_in", "scene_scaled", "work_hours_only",
-                    "legacy_ratio", "ctrl_modes", "fridge_block", "calib_levels", "k")
+                    "legacy_ratio", "ctrl_modes", "fridge_block", "k")
 SHARED_NAMES = tuple(n for n, s in PARAMS.items() if s.levels == _SHARED)
 ZONE_NAMES = tuple(n for n, s in PARAMS.items() if s.levels == _ZONE_ONLY)
 GLOBAL_NAMES = tuple(n for n, s in PARAMS.items() if s.levels == _GLOBAL_ONLY)
@@ -114,13 +113,3 @@ def resolve(name: str, *, global_p: dict, zone_p: dict | None, group_ps: list[di
 
 def parse_modes(text: str) -> tuple[str, ...]:
     return tuple(m.strip() for m in str(text).split(",") if m.strip())
-
-
-def parse_levels(text: str) -> tuple[int, int, int]:
-    try:
-        v = tuple(int(float(x)) for x in str(text).split(","))
-    except ValueError:
-        v = ()
-    if len(v) != 3 or not all(1 <= x <= 100 for x in v):
-        return (20, 50, 80)
-    return v

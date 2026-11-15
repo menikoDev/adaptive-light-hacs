@@ -30,16 +30,6 @@ def zone_view(cfg: Config, z: str) -> dict:
             e for k in lamps for e in (
                 {"type": "section", "label": cfg.lamps[k]["name"]},
                 f"sensor.light_target_{k}", f"switch.light_{k}_auto", f"sensor.light_{k}_pause_until", f"number.light_k_{k}")]},
-        {"type": "entities", "title": "Calibration", "entities": [
-            f"sensor.{pre}light_calibration",
-            {"type": "button", "name": "Calibrate lamps (night)", "tap_action": {"action": "perform-action", "perform_action": "adaptive_light.calibrate",
-                                                                                   "data": {"zone": z, "settle_s": 60}}},
-            {"type": "button", "name": "Apply calibration", "tap_action": {"action": "perform-action", "perform_action": "adaptive_light.calibrate_apply",
-                                                                           "data": {"zone": z}}},
-            {"type": "button", "name": "Calibrate open_k (day, blinds open)", "tap_action": {"action": "perform-action",
-                                                                                              "perform_action": "adaptive_light.calibrate_open_k", "data": {"zone": z}}},
-            {"type": "button", "name": "Cancel calibration", "tap_action": {"action": "perform-action", "perform_action": "adaptive_light.calibrate_cancel",
-                                                                           "data": {"zone": z}}}]},
     ]
     return {"title": cfg.zones[z]["name"], "path": z, "icon": "mdi:lightbulb-group", "cards": cards}
 

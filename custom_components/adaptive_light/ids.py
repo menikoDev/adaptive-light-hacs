@@ -31,7 +31,6 @@ def expected_entities(cfg: Config) -> dict[str, list[str]]:
         "switch.light_adaptive_enabled", "switch.light_adaptive_apply", "switch.light_adaptive_scenarios"], "number": []}
     for z in cfg.zone_order:
         out["sensor"] += [f"sensor.{o}" for o in zone_sensor_ids(cfg, z).values()]
-        out["sensor"].append(f"sensor.{prefix(cfg, z)}light_calibration")
         out["binary_sensor"].append(f"binary_sensor.{prefix(cfg, z)}light_evening_quiet")
     for k in cfg.lamps:
         out["sensor"] += [f"sensor.light_target_{k}", f"sensor.light_{k}_pause_until"]

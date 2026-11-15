@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import Any, Callable
 
-from . import calibration, core, params as P
+from . import core, params as P
 from .executors import Bind, Ctx
 from .model import Config, normalise, validate
 from .persistence import PersistedState, SAVE_DELAY_S
@@ -43,10 +43,6 @@ class AdaptiveLightManager:
         self._own_context_ids: set[str] = set()
         self._unsub: list[Callable[[], None]] = []
         self.executors = None
-        self.calibration_tasks: dict[str, Any] = {}
-        self.calibration_status: dict[str, str] = {}
-        self.calibration_warnings: dict[str, list[str]] = {}
-        self.calibration_info: dict[str, dict] = {}   # zone -> {source, base_lamps, lamp_sources[, applied]} of the last calibration
         self.set_config(cfg)
 
     # ------------------------------------------------------------ config
@@ -206,22 +202,6 @@ class AdaptiveLightManager:
             lux=self.effective_lux(zone), daylight=self.daylight(),
             openness=self.openness[zone].value if self.has_lux_sensor(zone) else 100.0, mode=mode,
             scene=scene, evening_quiet=self._now().hour >= int(evening_h), lamps=self.zone_lamps(zone), params=p)
-
-    def calibration_summary(self, zone: str) -> dict:
-        """What the last calibration of the zone measured: source (measured/base/mixed), base lamps, per lamp source."""
-        info = self.calibration_info.get(zone)
-        if info:
-            return info
-        cand = self.state.candidates.get(zone)   # after a restart: derive from the stored candidates
-        if not cand:
-            return {}
-        lamps = [k for k in self.cfg.lamps_in_zone(zone) if k in cand]
-        meta = calibration.candidate_meta(cand, lamps)
-        return {**meta, "lamp_sources": {k: ("base" if k in meta["base_lamps"] else "measured") for k in lamps}}
-
-    def set_calibration_status(self, zone: str, status: str) -> None:
-        self.calibration_status[zone] = status
-        self._notify()
 
     # ------------------------------------------------------------ pipeline
     def recompute(self) -> dict[str, Any]:
@@ -437,9 +417,6 @@ class AdaptiveLightManager:
         if self.executors:
             self.executors.stop()
             self.executors = None
-        for t in self.calibration_tasks.values():
-            if not t.done():
-                t.cancel()
         for u in self._unsub:
             u()
         self._unsub.clear()

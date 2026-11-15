@@ -337,10 +337,9 @@ def plan_living_room() -> dict:
             lamp("top_left", "light.living_room_top_lamp_top_left", prof(10, 60, 0.5, 0.1, ctrl_modes="Day,Evening", fridge_block=1)),
             lamp("top_right", "light.living_room_top_lamp_top_right", prof(10, 60, 0.5, 0.1, ctrl_modes="Day,Evening", fridge_block=1)),
             lamp("bottom", "light.living_room_top_lamp_bottom", prof(5, 40, 0.6, 0.1, ctrl_modes="Day,Evening", fridge_block=1)),
-            lamp("desk", "light.work_station_lamp", prof(5, 100, 0.8, 0.5, ctrl_modes="Day,Evening,Movie", scene_scaled=1,
-                                                         calib_levels="15,40,80")),
+            lamp("desk", "light.work_station_lamp", prof(5, 100, 0.8, 0.5, ctrl_modes="Day,Evening,Movie", scene_scaled=1)),
             lamp("stick", "light.work_station_light_stick", prof(5, 25, 0.8, 0.3, ctrl_modes="Day,Evening,Movie", scene_scaled=1,
-                                                                 work_hours_only=1, legacy_ratio=0.25, calib_levels="5,15,30")),
+                                                                 work_hours_only=1, legacy_ratio=0.25)),
         ],
         "groups": [
             {"key": "top", "name": "Top lamps", "zone": "living_room", "lamps": ["top_left", "top_right", "bottom"], "params": {}},

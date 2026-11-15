@@ -6,11 +6,11 @@ PLAN = os.environ.get("PLAN", "/cursor/stores/self/docs/adaptive-light-plan.md")
 
 
 def _load_pure_package():
-    """Import adaptive_light.{const,core,calibration,manager} WITHOUT running __init__.py (it needs Home Assistant)."""
+    """Import adaptive_light modules WITHOUT running __init__.py (it needs Home Assistant)."""
     pkg = types.ModuleType("adaptive_light")
     pkg.__path__ = [os.path.join(ROOT, "custom_components", "adaptive_light")]
     sys.modules["adaptive_light"] = pkg
-    for name in ("params", "model", "core", "calibration", "persistence", "executors", "exec_runtime", "manager", "ids", "flow_ops", "services", "areas", "draft"):
+    for name in ("params", "model", "core", "persistence", "executors", "exec_runtime", "manager", "ids", "flow_ops", "areas", "draft"):
         spec = importlib.util.spec_from_file_location(f"adaptive_light.{name}", os.path.join(pkg.__path__[0], f"{name}.py"))
         mod = importlib.util.module_from_spec(spec)
         sys.modules[f"adaptive_light.{name}"] = mod

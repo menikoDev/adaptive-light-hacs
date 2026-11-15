@@ -1,8 +1,6 @@
 """A zone without an illuminance sensor (0.3.0): daylight-only estimate for the formulas, executors and the controller,
-no openness/trust, and calibration refuses with a clear reason."""
-import pytest
-
-from adaptive_light import calibration, core, executors as ex, flow_ops as ops, services as svc
+no openness/trust."""
+from adaptive_light import core, executors as ex, flow_ops as ops
 from adaptive_light.model import validate
 from test_manager_zones import St, make, run
 from helpers_cfg import two_rooms
@@ -94,21 +92,3 @@ def test_executors_get_the_estimated_lux():
     assert ex.evening_allowed(c2, presence=True, group_off=True)        # dark by estimate: evening light may start
     assert not ex.evening_allowed(c1, presence=True, group_off=True)    # bright by estimate: it may not
     assert m.exec_ctx("living_room").lux == 20.0                         # zones with a sensor keep the measured value
-
-
-def test_calibration_is_skipped_with_a_clear_notification():
-    m, hass = make_bare(mode="Night", rad=0)
-    hass.states["sensor.general_sun_solar_elevation"] = St("-20")
-    with pytest.raises(ValueError, match="no illuminance sensor"):
-        run(svc.async_calibrate(hass, m, "bedroom", 1))
-    notes = [c[2] for c in hass.services.calls if c[:2] == ("persistent_notification", "create")]
-    assert notes and "no illuminance sensor" in notes[0]["message"] and notes[0]["title"] == "Light calibration not started"
-    assert "bedroom" not in m.calibration_tasks
-
-
-def test_open_k_calibration_refuses_without_sensor():
-    m, hass = make_bare(mode="Day", rad=600)
-    with pytest.raises(ValueError, match="no illuminance sensor"):
-        run(svc.async_calibrate_open_k(hass, m, "bedroom"))
-    assert calibration.open_k_blockers(mode="Day", daylight=80, any_lamp_on=False, lux=None, has_sensor=False) == calibration.NO_SENSOR_REASON
-    assert calibration.open_k_blockers(mode="Day", daylight=80, any_lamp_on=False, lux=None) == "no lux reading"

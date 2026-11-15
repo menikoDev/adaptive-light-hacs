@@ -10,7 +10,6 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
-from . import calibration, services as svc
 from .const import CONF_CONFIG, DOMAIN, PLATFORMS, SERVICES
 from .manager import AdaptiveLightManager
 from .model import Config
@@ -38,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload only for edits made in the UI; changes the manager itself persisted (calibration, k, set_param) are no-ops."""
+    """Reload only for edits made in the UI; changes the manager itself persisted (k, set_param) are no-ops."""
     mgr = hass.data[DOMAIN].get(entry.entry_id)
     if mgr is not None and Config(entry_config(entry)).to_dict() == mgr.cfg.to_dict():
         return
@@ -68,7 +67,6 @@ def _mgr(hass: HomeAssistant) -> AdaptiveLightManager:
 def _register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICES[0]):
         return
-    zone = {vol.Optional("zone"): cv.string}
 
     def wrap(fn):
         async def handler(call: ServiceCall):
@@ -84,19 +82,6 @@ def _register_services(hass: HomeAssistant) -> None:
         await m.controller_tick()
     async def clear(m, c): m.clear_pauses()
     async def reset(m, c): m.openness_tick(reset=True)
-    async def calib(m, c):
-        z = svc.pick_zone(m, c.data.get("zone"))
-        await svc.async_calibrate(hass, m, z, c.data["settle_s"], c.data["wait"])
-        return {"zone": z, "warnings": m.calibration_warnings.get(z, []), "caution": calibration.CAUTION_EN, "caution_ru": calibration.CAUTION_RU}
-    async def cancel(m, c): await svc.async_calibrate_cancel(hass, m, c.data.get("zone"))
-    async def apply(m, c):
-        z = svc.pick_zone(m, c.data.get("zone"))
-        ok = await svc.async_calibrate_apply(hass, m, z)
-        info = m.calibration_summary(z)
-        return {"zone": z, "applied": ok, "calibration_source": info.get("source"), "base_lamps": info.get("base_lamps", []),
-                "dark_lux_offset_written": "bg0" in ok,
-                "note": "base_lamps got their base k explicitly: it is NOT a measurement" if info.get("base_lamps") else ""}
-    async def openk(m, c): return {"open_k": await svc.async_calibrate_open_k(hass, m, c.data.get("zone"))}
     async def setp(m, c):
         m.set_param(c.data["level"], c.data.get("target", ""), c.data["name"], c.data.get("value"))
 
@@ -105,11 +90,6 @@ def _register_services(hass: HomeAssistant) -> None:
         "controller_tick": (tick, {vol.Optional("openness", default=False): cv.boolean}, SupportsResponse.NONE),
         "clear_pauses": (clear, {}, SupportsResponse.NONE),
         "openness_reset": (reset, {}, SupportsResponse.NONE),
-        "calibrate": (calib, {**zone, vol.Optional("settle_s", default=60): vol.All(vol.Coerce(float), vol.Range(min=0, max=600)),
-                              vol.Optional("wait", default=False): cv.boolean}, SupportsResponse.OPTIONAL),
-        "calibrate_cancel": (cancel, zone, SupportsResponse.NONE),
-        "calibrate_apply": (apply, zone, SupportsResponse.OPTIONAL),
-        "calibrate_open_k": (openk, zone, SupportsResponse.OPTIONAL),
         "set_param": (setp, {vol.Required("level"): vol.In(["global", "zone", "group", "lamp"]), vol.Optional("target", default=""): cv.string,
                              vol.Required("name"): cv.string, vol.Optional("value"): vol.Any(None, cv.string, vol.Coerce(float), cv.boolean)},
                       SupportsResponse.NONE),

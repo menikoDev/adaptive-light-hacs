@@ -12,7 +12,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class LampK(AdaptiveEntity, NumberEntity):
-    """Lux per 1% of the lamp: the same value calibration writes into the lamp's parameters."""
+    """Lux per 1% of the lamp. Set by hand here or with set_param; the controller reads it."""
 
     _attr_mode = NumberMode.BOX
     _attr_native_min_value, _attr_native_max_value, _attr_native_step = 0.001, 100, 0.001

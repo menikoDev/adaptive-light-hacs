@@ -27,7 +27,6 @@ class PersistedState:
     pause_until: dict[str, float] = field(default_factory=dict)          # lamp key -> timestamp
     openness: dict[str, tuple[float, int]] = field(default_factory=dict)  # zone key -> (value, low_count)
     last_set_ts: float = 0.0
-    candidates: dict[str, dict[str, float]] = field(default_factory=dict)  # zone key -> {"bg0", lamp: k, "_ts"}
     enabled: bool = False
     apply: bool = False
     scenarios: bool = True                                               # behaviour scenarios (executors) on/off
@@ -39,7 +38,6 @@ class PersistedState:
             "pause_until": {k: v for k, v in self.pause_until.items() if v},
             "openness": {z: {"value": v, "low_count": c} for z, (v, c) in self.openness.items()},
             "last_set_ts": self.last_set_ts,
-            "candidates": self.candidates,
             "enabled": self.enabled,
             "apply": self.apply,
             "scenarios": self.scenarios,
@@ -47,8 +45,7 @@ class PersistedState:
         }
 
     @classmethod
-    def from_dict(cls, data: Any, *, now_ts: float, lamps: list[str] | None = None, zones: list[str] | None = None,
-                  max_age_s: float = 7 * 86400):
+    def from_dict(cls, data: Any, *, now_ts: float, lamps: list[str] | None = None, zones: list[str] | None = None):
         """Tolerant loader: wrong types are dropped, expired pauses ignored, keys that are no longer configured
         (removed lamp or zone) are dropped so they cannot leave stale state behind."""
         s = cls()
@@ -66,14 +63,6 @@ class PersistedState:
                 if isinstance(d, dict) and (zones is None or z in zones):
                     s.openness[z] = (_num(d.get("value"), 100.0, 0.0, 100.0), int(_num(d.get("low_count"), 0, 0, 1000)))
         s.last_set_ts = _num(data.get("last_set_ts"), 0.0)
-        cand = data.get("candidates")
-        if isinstance(cand, dict):
-            for z, d in cand.items():
-                if not isinstance(d, dict) or (zones is not None and z not in zones):
-                    continue
-                clean = {k: _num(v, math.nan) for k, v in d.items() if isinstance(k, str)}
-                if clean and all(math.isfinite(v) for v in clean.values()) and now_ts - clean.get("_ts", 0.0) <= max_age_s:
-                    s.candidates[z] = clean
         s.enabled = data.get("enabled") is True
         s.apply = data.get("apply") is True
         s.scenarios = data.get("scenarios") is not False

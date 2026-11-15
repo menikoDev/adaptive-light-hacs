@@ -30,8 +30,7 @@ PARAM = {  # name: (en, ru)
     "legacy_ratio": ("Legacy ratio (desk scenes)", "Коэффициент старой сцены"),
     "ctrl_modes": ("Controller works in modes (comma separated)", "Режимы работы контроллера (через запятую)"),
     "fridge_block": ("Do not adjust while fridge zone is active", "Не менять при активной зоне холодильника"),
-    "calib_levels": ("Calibration levels (3 numbers)", "Уровни калибровки (3 числа)"),
-    "k": ("Lux per 1% (set by calibration)", "Люксов на 1% (задаёт калибровка)"),
+    "k": ("Lux per 1% (set by hand)", "Люксов на 1% (задаётся вручную)"),
     "dark_lux_offset": ("Dark lux offset", "Тёмный фон, лк"),
     "blind_lux_floor": ("Blind lux floor", "Порог слепоты по люксам"),
     "open_k": ("Open-window k", "k открытости окна"),
@@ -48,7 +47,7 @@ ROLE = {
     "elevation": ("Sun elevation sensor (daylight source)", "Высота солнца (источник дневного света)"),
     "illuminance": ("Illuminance sensor", "Датчик освещённости"),
     "presence": ("Presence sensors", "Датчики присутствия"),
-    "media": ("TV / monitors (calibration warning)", "ТВ / мониторы (предупреждение при калибровке)"),
+    "media": ("TV / monitors", "ТВ / мониторы"),
     "sofa": ("Sofa sensor", "Датчик дивана"), "table": ("Table sensor", "Датчик стола"),
     "fridge": ("Fridge zone sensor", "Датчик зоны холодильника"), "entrance": ("Entrance sensor", "Датчик входа"),
     "carpet": ("Carpet sensor", "Датчик ковра"), "window_advice": ("Window advice sensor", "Подсказка по окну"),
@@ -90,8 +89,8 @@ UI = {  # key: (en, ru)
                  "Зона — это комната. Выберите одну из областей (Areas) Home Assistant: название, ключ, лампы и датчики подставятся сами. Или оставьте поле пустым для своей зоны."),
     "zone_name": ("Name of the zone", "Название зоны", "Area: {area}. The name is shown in Home Assistant; change it if you like. The key is a short latin id used in entity ids and settings; leave it empty to derive it from the name.",
                   "Область: {area}. Название видно в Home Assistant, его можно изменить. Ключ — короткий латинский id для сущностей и настроек; пустой = получить из названия."),
-    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "All optional. Without an illuminance sensor the zone uses a daylight-only estimate and cannot be calibrated. Sensors found in the area are prefilled. Several presence sensors are allowed: the zone is occupied if any of them is on. Presence and TV / monitors never block the calibration: they only produce a warning, because people, a running TV and daylight distort the result. While a calibration runs, do not turn the lamps on or off and do not change them by hand.",
-                     "Все необязательные. Без датчика освещённости зона считает свет по дневному свету и не калибруется. Датчики из области подставлены. Датчиков присутствия может быть несколько: зона занята, если включён любой из них. Присутствие и ТВ / мониторы калибровку не блокируют, а только дают предупреждение: люди, работающий ТВ и дневной свет искажают результат. Пока идёт калибровка, не включайте и не выключайте лампы и не меняйте их вручную."),
+    "zone_sensors": ("Sensors of {zone}", "Датчики зоны {zone}", "All optional. Without an illuminance sensor the zone uses a daylight-only estimate. Sensors found in the area are prefilled. Several presence sensors are allowed: the zone is occupied if any of them is on.",
+                     "Все необязательные. Без датчика освещённости зона считает свет только по дневному свету. Датчики из области подставлены. Датчиков присутствия может быть несколько: зона занята, если включён любой из них."),
     "zone_extra_sensors": ("Extra sensors of {zone}", "Дополнительные датчики {zone}", "Only for the behaviour scenarios (fridge, sofa, windows ...). Leave empty if unused.",
                            "Только для сценариев поведения (холодильник, диван, окна ...). Оставьте пустым, если не нужно."),
     "zone_lamps": ("Lamps of {zone}", "Лампы зоны {zone}", "Pick the light entities of this zone (lights of the area are prefilled). Each becomes a lamp with its own auto switch.",
@@ -154,43 +153,9 @@ FIELD = {"name": ("Name", "Название"), "area": ("Area (optional)", "Об
          "color_temp_kelvin": ("Colour temperature, K", "Цветовая температура, K"),
          "off_delay_s": ("Off delay, s", "Задержка выключения, с"),
          "rule": ("Rule", "Правило")}
-CALIB_DESC = (
-    "Measures lux per 1% of every lamp of the zone at three levels (about 4 minutes per lamp at the default settle time) and stores "
-    "candidates; nothing is applied until calibrate_apply. A lamp whose test levels raise the illuminance by less than 1 lx "
-    "(the sensor is far or high, the lamp is weak) does not stop the calibration: it is not measured and keeps its base k (its "
-    "current value, 0.1 by default), marked as base; if no lamp of the zone shows growth the whole zone is calibrated 'by base' and "
-    "no dark_lux_offset is proposed (see the calibration_source and base_lamps attributes of the calibration sensor). It refuses to start only when the zone has no illuminance sensor or "
-    "a calibration of the zone is already running. Darkness, mode Night, an empty room and a switched-off TV give the best result, "
-    "but none of them is required: unfavourable conditions only produce a warning (log, persistent notification, the warnings "
-    "attribute of the calibration sensor and the service response). Do not turn the lamps on or off and do not change them by hand "
-    "while the calibration runs. Daylight, people in the room and a running TV or monitor distort the result.",
-    "Измеряет люксы на 1% у каждой лампы зоны на трёх уровнях (около 4 минут на лампу при времени ожидания по умолчанию) и сохраняет "
-    "кандидатов; пока не вызвана calibrate_apply, ничего не применяется. Лампа, у которой на тестовых уровнях освещённость выросла "
-    "меньше чем на 1 лк (датчик далеко или высоко, лампа слабая), калибровку не останавливает: она не измеряется и сохраняет базовое "
-    "k (текущее значение, по умолчанию 0.1) с пометкой base; если прироста нет ни у одной лампы зоны, вся зона калибруется «по базе» "
-    "и dark_lux_offset не предлагается (атрибуты calibration_source и base_lamps у датчика калибровки). Отказ только по техническим причинам: у зоны нет датчика "
-    "освещённости или калибровка зоны уже идёт. Лучший результат дают темнота, режим Night, пустая комната и выключенный ТВ, "
-    "но ничего из этого не обязательно: неблагоприятные условия дают только предупреждение (журнал, постоянное уведомление, атрибут "
-    "warnings у датчика калибровки и ответ службы). Пока идёт калибровка, не включайте и не выключайте лампы и не меняйте их "
-    "вручную. Дневной свет, присутствие людей и работающий ТВ или монитор искажают результат.")
-CALIB_FIELDS = {
-    "zone": ("Zone key (the main zone by default).", "Ключ зоны (по умолчанию основная)."),
-    "settle_s": ("Seconds to wait after every lamp change before reading the illuminance.", "Секунд ожидания после каждого изменения лампы перед чтением освещённости."),
-    "wait": ("Wait until the calibration finishes (can take many minutes). Do not touch the lamps meanwhile.",
-             "Ждать окончания калибровки (может занять много минут). Не трогайте лампы в это время."),
-}
-APPLY_DESC = (
-    "Writes the calibration candidates into the k of the lamps and, when something was measured, into dark_lux_offset of the zone. "
-    "Lamps marked base (no growth, not measured) get their base k written explicitly; it is NOT a measurement. A run where no lamp "
-    "showed growth never writes dark_lux_offset. The response lists the base lamps and whether dark_lux_offset was written.",
-    "Записывает кандидатов калибровки в k ламп и, если что-то было измерено, в dark_lux_offset зоны. Лампам с пометкой base (нет "
-    "прироста, не измерены) явно записывается базовое k; это НЕ измерение. Запуск, где ни одна лампа не показала прироста, "
-    "dark_lux_offset не пишет никогда. В ответе перечислены лампы base и записан ли dark_lux_offset.")
 SERV = {
     "controller_tick": ("Run controller tick", "Один такт контроллера"), "clear_pauses": ("Clear manual pauses", "Сбросить паузы"),
-    "openness_reset": ("Reset openness", "Сбросить открытость"), "calibrate": ("Calibrate lamps (night)", "Калибровка ламп (ночь)"),
-    "calibrate_cancel": ("Cancel calibration", "Отменить калибровку"), "calibrate_apply": ("Apply calibration", "Применить калибровку"),
-    "calibrate_open_k": ("Calibrate open_k (day)", "Калибровка open_k (день)"), "set_param": ("Set a parameter", "Задать параметр"),
+    "openness_reset": ("Reset openness", "Сбросить открытость"), "set_param": ("Set a parameter", "Задать параметр"),
 }
 
 
@@ -240,9 +205,6 @@ def build(i: int) -> dict:
                }},
            },
            "services": {n: {"name": v[i], "description": v[i]} for n, v in SERV.items()}}
-    out["services"]["calibrate"]["description"] = CALIB_DESC[i]
-    out["services"]["calibrate_apply"]["description"] = APPLY_DESC[i]
-    out["services"]["calibrate"]["fields"] = {f: {"name": f, "description": d[i]} for f, d in CALIB_FIELDS.items()}
     return out
 
 

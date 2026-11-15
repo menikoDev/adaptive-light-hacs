@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Live checks of the integration on stand B (HA Core 2026.11.1, port 18125): wizard, restart persistence, options flow + reload,
-scenarios (executors), calibration. Usage: python3 stand_integration.py [wizard] [restart] [options] [scenarios] [calibration]
+scenarios (executors). Usage: python3 stand_integration.py [wizard] [restart] [options] [scenarios]
 (no argument = all). Requires `bash build_b.sh fresh` first. Fake hardware only: see the README for what this does not prove."""
-import subprocess, sys, threading, time, os
+import subprocess, sys, time, os
 
 from ha_b import HA, LAMPS, BASELINE
 import flows
@@ -70,7 +70,7 @@ def t_wizard():
     need = {"sensor.daylight_factor", "sensor.light_need", "sensor.bedroom_light_need", "binary_sensor.bedroom_light_evening_quiet",
             "switch.light_adaptive_enabled", "switch.light_adaptive_apply", "switch.light_adaptive_scenarios",
             "switch.light_living_room_top_lamp_bottom_auto", "number.light_k_work_station_lamp", "sensor.light_target_work_station_lamp",
-            "sensor.bedroom_light_calibration"}
+}
     check("W2", "entities of both zones and every lamp exist", need <= ents, str(sorted(need - ents)))
     # a zone WITHOUT illuminance sensor is accepted (0.3.0) and runs on the daylight-only estimate
     for e in B.entries():
@@ -96,15 +96,6 @@ def t_wizard():
           f"need={B.state('sensor.light_need')} target={B.state('sensor.light_target_work_station_lamp')}")
     check("W3f", "trust and openness are unavailable (nothing to judge them by)", B.state("sensor.light_ambient_trust") == "unavailable" and B.state("sensor.light_openness") == "unavailable",
           f"{B.state('sensor.light_ambient_trust')} {B.state('sensor.light_openness')}")
-    B.put("sensor.general_sun_solar_elevation", -20); B.call("input_select.select_option", {"entity_id": MODE, "option": "Night"})
-    try:
-        B.call("adaptive_light.calibrate", {"zone": "hall", "settle_s": 1}); msg = ""
-    except RuntimeError as e:
-        msg = str(e)
-    notes = B.ws({"type": "persistent_notification/get"})
-    check("W3g", "calibration of a zone without sensor refuses with a reason", "no illuminance sensor" in msg, msg[:200])
-    check("W3h", "and leaves a notification", any("no illuminance sensor" in str(n.get("message", "")) for n in notes), str([n.get("message") for n in notes])[:200])
-    B.put("sensor.general_sun_solar_elevation", 30); B.call("input_select.select_option", {"entity_id": MODE, "option": "Day"})
     for e in B.entries():
         B.req("DELETE", "/api/config/config_entries/entry/" + e["entry_id"])
     time.sleep(1); B.seed()
@@ -192,78 +183,6 @@ def t_options():
     e = B.entries()[0]; f = B.options_start(e["entry_id"]); B.options_step(f["flow_id"], {"next_step_id": "global_params"})
     B.options_step(f["flow_id"], {"target_lux_day": 5}); time.sleep(1)
     check("O7", "unsaved options flow changes nothing", B.entries()[0]["state"] == "loaded")
-
-
-class LuxSim(threading.Thread):
-    """Fake illuminance sensor of the living room: background + sum(k_true * lamp %), refreshed from the lamp states."""
-    KTRUE = {"top_left": 0.12, "top_right": 0.09, "bottom": 0.2, "desk": 0.55, "stick": 0.8}
-
-    def __init__(self, bg=0.5):
-        super().__init__(daemon=True); self.bg, self.stop_ = bg, False
-
-    def run(self):
-        while not self.stop_:
-            try:
-                tot = self.bg
-                for k, e in LAMPS.items():
-                    p = B.pct(e)
-                    if p:
-                        tot += self.KTRUE[k] * p
-                B.put(LUX, round(tot, 2))
-            except Exception:
-                pass
-            time.sleep(0.25)
-
-
-def t_calibration():
-    fresh_entry(); reset_state()
-    B.put("sensor.general_sun_solar_elevation", -20); B.put("sensor.general_graz_meteo_station_global_radiation", 0)
-    B.call("input_select.select_option", {"entity_id": MODE, "option": "Night"})
-    B.put("binary_sensor.living_room_presence_sensor", "off")
-    B.call("light.turn_on", {"entity_id": LAMPS["desk"], "brightness_pct": 40})
-    sim = LuxSim(); sim.start(); time.sleep(1)
-    try:
-        B.put("binary_sensor.living_room_presence_sensor", "on")
-        try:
-            B.call("adaptive_light.calibrate", {"zone": "living_room", "settle_s": 1}); started = True
-        except RuntimeError:
-            started = False
-        check("K1", "presence is only a warning: calibration still starts", started)
-        check("K1b", "the warning is on the calibration sensor", B.wait(lambda: any("presence" in w for w in B.get("sensor.light_calibration")["attributes"].get("warnings", [])), 10),
-              str(B.get("sensor.light_calibration")["attributes"].get("warnings")))
-        B.call("adaptive_light.calibrate_cancel", {"zone": "living_room"})
-        B.wait(lambda: B.state("sensor.light_calibration") == "cancelled", 30)
-        B.put("binary_sensor.living_room_presence_sensor", "off")
-        B.call("adaptive_light.calibrate", {"zone": "living_room", "settle_s": 1.5})
-        check("K2", "calibration running (status sensor)", B.wait(lambda: B.state("sensor.light_calibration").startswith("running"), 10), B.state("sensor.light_calibration"))
-        done = B.wait(lambda: B.state("sensor.light_calibration") in ("done", "aborted") or B.state("sensor.light_calibration").startswith("error"), 300, 1)
-        check("K3", "calibration finished", B.state("sensor.light_calibration") == "done", B.state("sensor.light_calibration"))
-        cand = B.get("sensor.light_calibration")["attributes"].get("candidates", {})
-        ok = all(abs(cand.get(k, 0) - v) < 0.01 for k, v in LuxSim.KTRUE.items())
-        check("K4", "candidates match the simulated lamps", ok, str(cand))
-        check("K5", "lamps restored to the snapshot (desk 40 %, others off)", B.pct(LAMPS["desk"]) in (39, 40, 41) and all(B.pct(LAMPS[k]) is None for k in K if k != "desk"),
-              str({k: B.pct(LAMPS[k]) for k in K}))
-        check("K6", "k not written before apply", abs(float(B.state("number.light_k_desk")) - 0.5) < 1e-9, B.state("number.light_k_desk"))
-        B.call("adaptive_light.calibrate_apply", {"zone": "living_room"})
-        time.sleep(1)
-        ks = {k: float(B.state(f"number.light_k_{k}")) for k in K}
-        check("K7", "apply wrote k into the lamp parameters", all(abs(ks[k] - v) < 0.01 for k, v in LuxSim.KTRUE.items()), str(ks))
-        B.call("adaptive_light.calibrate_apply", {"zone": "living_room"}) if False else None
-    finally:
-        sim.stop_ = True
-    # day-time open_k
-    B.call("light.turn_off", {"entity_id": list(LAMPS.values())})
-    B.call("input_select.select_option", {"entity_id": MODE, "option": "Day"})
-    B.put("sensor.general_graz_meteo_station_global_radiation", 600); B.put("sensor.general_sun_solar_elevation", 40); B.put(LUX, 340); time.sleep(1.5)
-    r = B.call("adaptive_light.calibrate_open_k", {"zone": "living_room"}, ret=True)
-    dl = float(B.state("sensor.daylight_factor"))
-    check("K8", "open_k calibrated in daylight", abs(r["service_response"]["open_k"] - round(340 / dl, 2)) < 0.011, str(r))
-    B.call("light.turn_on", {"entity_id": LAMPS["desk"], "brightness_pct": 20}); time.sleep(1)
-    try:
-        B.call("adaptive_light.calibrate_open_k", {"zone": "living_room"}); bad = False
-    except RuntimeError as e:
-        bad = "lamp is on" in str(e)
-    check("K9", "open_k refuses while a lamp is on", bad)
 
 
 def t_scenarios():
@@ -410,7 +329,7 @@ def t_draft():
 
 
 if __name__ == "__main__":
-    which = sys.argv[1:] or ["wizard", "areas", "draft", "restart", "options", "scenarios", "calibration"]
+    which = sys.argv[1:] or ["wizard", "areas", "draft", "restart", "options", "scenarios"]
     for w in which:
         print(f"== {w}", flush=True)
         globals()["t_" + w]()

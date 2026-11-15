@@ -6,7 +6,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 
 from .const import DOMAIN
 from .entity import AdaptiveEntity, hub_device, zone_device
-from .ids import ZONE_SENSORS, prefix, zone_sensor_ids
+from .ids import ZONE_SENSORS, zone_sensor_ids
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -17,7 +17,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ids = zone_sensor_ids(cfg, z)
         for _, key, name, unit in ZONE_SENSORS:
             ents.append(ZoneSensor(mgr, z, ids[key], key, f"{cfg.zones[z]['name']} {name}", unit))
-        ents.append(CalibrationSensor(mgr, z))
     for k in cfg.lamps:
         ents.append(LampTarget(mgr, k))
         ents.append(PauseSensor(mgr, k))
@@ -101,24 +100,3 @@ class PauseSensor(AdaptiveEntity, SensorEntity):
     def native_value(self):
         ts = self.mgr.pause_until.get(self._key, 0.0)
         return datetime.fromtimestamp(ts, timezone.utc) if ts > self.mgr._now().timestamp() else None
-
-
-class CalibrationSensor(AdaptiveEntity, SensorEntity):
-    _attr_icon = "mdi:ruler"
-
-    def __init__(self, mgr, zone):
-        super().__init__(mgr, "sensor", f"{prefix(mgr.cfg, zone)}light_calibration", f"{mgr.cfg.zones[zone]['name']} calibration",
-                         zone_device(mgr, zone))
-        self._zone = zone
-
-    @property
-    def native_value(self): return self.mgr.calibration_status.get(self._zone, "idle")
-
-    @property
-    def extra_state_attributes(self):
-        c = self.mgr.state.candidates.get(self._zone) or {}
-        info = self.mgr.calibration_summary(self._zone)
-        return {"candidates": {k: v for k, v in c.items() if not k.startswith("_")}, "zone": self._zone,
-                "warnings": self.mgr.calibration_warnings.get(self._zone, []),
-                "calibration_source": info.get("source"), "base_lamps": info.get("base_lamps", []),
-                "lamp_sources": info.get("lamp_sources", {}), "applied": bool(info.get("applied", False))}

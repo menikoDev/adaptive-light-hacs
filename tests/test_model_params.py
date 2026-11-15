@@ -92,4 +92,4 @@ def test_param_registry_is_consistent():
     for n in P.LAMP_PARAM_NAMES + P.SHARED_NAMES + P.ZONE_NAMES + P.GLOBAL_NAMES:
         assert n in P.PARAMS
     assert P.coerce("min", 500) == 100 and P.coerce("scene_scaled", "on") == 1
-    assert P.parse_levels("5, 15, 30") == (5, 15, 30) and P.parse_modes("Day, Evening") == ("Day", "Evening")
+    assert P.parse_modes("Day, Evening") == ("Day", "Evening") and "calib_levels" not in P.PARAMS

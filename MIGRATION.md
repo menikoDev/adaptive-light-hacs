@@ -22,10 +22,8 @@
 | `input_number.light_override_minutes`, `light_target_lux_*`, `light_w_*`, `light_evening_start_hour`, `light_need_blind` | параметры (глобально/зона/группа/лампа) | в мастере и настройках; изменение из автоматизации: `adaptive_light.set_param` |
 | `input_number.light_<лампа>_min/max/gain/evening_mult/w_out/w_in` | параметры лампы `min`, `max`, `gain`, `evening_mult`, `w_out`, `w_in` | `-1` у `w_out/w_in` = наследовать |
 | `input_number.light_desk_scene_work/bright/soft` | параметры `scene_work/bright/soft` (множители); применяются к лампам с `scene_scaled` | у пресета это desk и stick |
-| `input_number.light_dark_lux_offset`, `light_blind_lux_floor`, `light_open_k`, `light_open_min_daylight`, `light_open_hyst`, `light_open_confirm` | параметры зоны | `dark_lux_offset` и `open_k` пишет калибровка |
-| `input_number.light_calibrate_result` | `sensor.light_calibration` (атрибут `candidates`) | |
-| `script.light_calibrate` | `adaptive_light.calibrate` + `calibrate_apply` | работает в фоне, не блокирует вызов |
-| `script.light_open_calibrate` | `adaptive_light.calibrate_open_k` | |
+| `input_number.light_dark_lux_offset`, `light_blind_lux_floor`, `light_open_k`, `light_open_min_daylight`, `light_open_hyst`, `light_open_confirm` | параметры зоны | задаются вручную, в том числе `set_param` |
+| `input_number.light_calibrate_result`, `script.light_calibrate`, `script.light_open_calibrate` | нет | калибровки нет; `k` и `open_k` задаются вручную |
 | `script.light_adaptive_set_defaults` | не нужен | значения по умолчанию заданы в коде |
 | автоматизации «Light: adaptive controller», «Light: adaptive manual override» | встроены (контроллер и перехват ручных изменений) | |
 | автоматизации 5.2-5.12 | сценарии поведения (`switch.light_adaptive_scenarios`) | нужны привязки зоны, см. README |
