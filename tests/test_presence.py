@@ -133,6 +133,100 @@ def test_a_single_presence_sensor_still_turns_lamps_on_and_off():
     assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
 
 
+def _saw(mgr, home, entity, state):
+    home.states.set(entity, state)
+    mgr.note_lamp_change(entity, state)
+
+
+def test_an_external_turn_off_blocks_only_that_lamp():
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    mgr = manager(home, ["binary_sensor.p"], timeout=10)
+    assert run(mgr.apply("hall")) == "on"
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+
+    _saw(mgr, home, "light.a", "off")
+    assert mgr.manual_off == {"light.a"}
+    home.services.calls.clear()
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+
+    home.states.set("binary_sensor.p", "off")
+    home.t = 0
+    assert run(mgr.apply("hall")) == "wait"
+    home.t = 10
+    assert run(mgr.apply("hall")) == "off"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.b"]})]
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == {"light.a"}
+
+    home.services.calls.clear()
+    home.states.set("binary_sensor.p", "on")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.b"]})]
+
+
+def test_the_zones_own_turn_off_does_not_block_the_next_presence():
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    mgr = manager(home, ["binary_sensor.p"], timeout=10)
+    run(mgr.apply("hall"))
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    home.services.calls.clear()
+
+    home.states.set("binary_sensor.p", "off")
+    home.t = 0
+    run(mgr.apply("hall"))
+    home.t = 10
+    assert run(mgr.apply("hall")) == "off"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == set()
+
+    home.services.calls.clear()
+    home.states.set("binary_sensor.p", "on")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+
+def test_an_external_turn_on_clears_the_block():
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "on")
+    mgr = manager(home, ["binary_sensor.p"], timeout=10)
+    run(mgr.apply("hall"))
+    _saw(mgr, home, "light.a", "on")
+    home.services.calls.clear()
+
+    _saw(mgr, home, "light.a", "off")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+
+    _saw(mgr, home, "light.a", "on")
+    assert mgr.manual_off == set()
+    home.states.set("binary_sensor.p", "off")
+    home.t = 0
+    run(mgr.apply("hall"))
+    home.t = 10
+    assert run(mgr.apply("hall")) == "off"
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    assert "light.a" not in mgr.manual_off
+
+    home.services.calls.clear()
+    home.states.set("binary_sensor.p", "on")
+    assert run(mgr.apply("hall")) == "on"
+    assert "light.a" in home.services.calls[-1][2]["entity_id"]
+
+
 def test_an_old_rule_config_is_dropped():
     old = {
         "version": 3,

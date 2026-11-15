@@ -1,4 +1,7 @@
-"""Which zones are enabled. Older runtime state (openness, pauses, coefficients) is ignored."""
+"""Which zones are enabled, and which lamps were switched off by hand.
+
+Older runtime state (openness, pauses, coefficients) is ignored.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,18 +14,31 @@ SAVE_DELAY_S = 5.0
 @dataclass
 class PersistedState:
     enabled: dict[str, bool] = field(default_factory=dict)
+    manual_off: set[str] = field(default_factory=set)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"version": STORE_VERSION, "enabled": {k: v is True for k, v in self.enabled.items()}}
+        return {
+            "version": STORE_VERSION,
+            "enabled": {k: v is True for k, v in self.enabled.items()},
+            "manual_off": sorted(self.manual_off),
+        }
 
     @classmethod
-    def from_dict(cls, data: Any, *, zones: list[str] | None = None) -> "PersistedState":
+    def from_dict(cls, data: Any, *, zones: list[str] | None = None, lamps: list[str] | None = None) -> "PersistedState":
         state = cls()
-        if not isinstance(data, dict) or not isinstance(data.get("enabled"), dict):
+        if not isinstance(data, dict):
             return state
-        for key, value in data["enabled"].items():
-            if isinstance(key, str) and (zones is None or key in zones):
-                state.enabled[key] = value is True
+        enabled = data.get("enabled")
+        if isinstance(enabled, dict):
+            for key, value in enabled.items():
+                if isinstance(key, str) and (zones is None or key in zones):
+                    state.enabled[key] = value is True
+        manual = data.get("manual_off")
+        if isinstance(manual, list):
+            state.manual_off = {
+                item for item in manual
+                if isinstance(item, str) and (lamps is None or item in lamps)
+            }
         return state
 
 
