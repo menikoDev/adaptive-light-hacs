@@ -15,7 +15,7 @@ from homeassistant.util import slugify
 
 from . import areas, draft as drafts, flow_ops as ops, params as P
 from .const import CONF_CONFIG, DOMAIN
-from .model import GLOBAL_ROLES, KEY_RE, ROLE_DOMAINS, empty_config, normalise, plan_living_room, validate
+from .model import GLOBAL_ROLES, KEY_RE, ROLE_DOMAINS, empty_config, make_rule, normalise, plan_living_room, validate
 
 _LOGGER = logging.getLogger(__name__)
 BOOL_OPTS = ["yes", "no"]
@@ -23,6 +23,8 @@ BOOL_OPTS = ["yes", "no"]
 _MENU_TEXT = {
     "groups_menu": {
         "group_add": ("Add a lamp group", "Добавить группу ламп"),
+        "zone_rules": ("Behaviour scenarios", "Сценарии поведения"),
+        "zone_extra": ("Extra settings", "Доп. настройки"),
         "more_zones": ("Continue", "Дальше"),
     },
     "zone_menu": {
@@ -30,6 +32,8 @@ _MENU_TEXT = {
         "zone_lamps": ("Add lamps", "Добавить лампы"),
         "group_add": ("Add a group", "Добавить группу"),
         "zone_params": ("Zone parameters", "Параметры зоны"),
+        "zone_rules": ("Behaviour scenarios", "Сценарии поведения"),
+        "zone_extra": ("Extra settings", "Доп. настройки"),
         "zone_remove": ("Remove zone", "Удалить зону"),
         "init": ("Back", "Назад"),
     },
@@ -90,6 +94,7 @@ class EditorMixin:
     _group: str = ""
     _level: str = "global"
     _target: str = ""
+    _after_rule: str = "groups_menu"
 
     def _ru(self) -> bool:
         lang = getattr(getattr(self, "hass", None), "config", None)
@@ -255,6 +260,137 @@ class EditorMixin:
         return self.async_show_form(step_id="params", data_schema=params_schema(self._level, cur),
                                     description_placeholders={"level": self._level, "target": self._target or "-"})
 
+    # ---- one rule, two screens (behaviour, then its coefficients). Both write the same fields.
+    def _zone_groups(self) -> list[dict]:
+        return [g for g in self.cfg["groups"] if g.get("zone") == self._zone]
+
+    def _rule_of(self, group: str) -> dict | None:
+        return next((r for r in ops.rules_in(self.cfg, self._zone) if r.get("group") == group), None)
+
+    def _labels(self, pairs: dict[str, tuple[str, str]]) -> dict[str, str]:
+        return {key: self._t(*text) for key, text in pairs.items()}
+
+    def _read(self, user_input: dict, labels: dict[str, str]) -> dict:
+        rev = {label: key for key, label in labels.items()}
+        return {rev[k]: v for k, v in (user_input or {}).items() if k in rev}
+
+    def _num_field(self, label: str, suggested, *, lo: float, hi: float, step: float, unit: str = ""):
+        cfg = {"min": lo, "max": hi, "step": step, "mode": sel.NumberSelectorMode.BOX}
+        if unit:
+            cfg["unit_of_measurement"] = unit
+        return vol.Required(label, description={"suggested_value": suggested}), sel.NumberSelector(sel.NumberSelectorConfig(**cfg))
+
+    def _choice(self, label: str, suggested, options: list[tuple[str, str]]):
+        return vol.Required(label, description={"suggested_value": suggested}), sel.SelectSelector(
+            sel.SelectSelectorConfig(options=[{"value": v, "label": lab} for v, lab in options],
+                                     mode=sel.SelectSelectorMode.DROPDOWN))
+
+    def _behaviour_labels(self) -> dict[str, str]:
+        return self._labels({
+            "group": ("Group", "Группа"),
+            "lux_below": ("Below, lx", "Ниже, лк"),
+            "action": ("Action", "Действие"),
+            "pct": ("Brightness, %", "Яркость, %"),
+            "presence": ("Presence", "Присутствие"),
+            "window": ("Time window", "Окно времени"),
+        })
+
+    def _extra_labels(self) -> dict[str, str]:
+        return self._labels({
+            "group": ("Group", "Группа"),
+            "min": ("Minimum, %", "Минимум, %"),
+            "max": ("Maximum, %", "Максимум, %"),
+            "gain": ("Gain", "Усиление"),
+            "evening_mult": ("Evening multiplier", "Вечерний множитель"),
+        })
+
+    async def async_step_zone_rules(self, user_input=None):
+        """Behaviour scenarios: the rule's group, lux threshold, action, presence and evening window."""
+        labels = self._behaviour_labels()
+        groups = self._zone_groups()
+        errors = {}
+        if not groups:
+            errors = {"base": "rule_needs_group"}
+        elif user_input is not None:
+            form = self._read(user_input, labels)
+            known = {g["key"] for g in groups}
+            if form.get("group") not in known or form.get("action") not in ("step", "target"):
+                errors = {"base": "bad_rule"}
+            else:
+                had = self._rule_of(form["group"]) or {}
+                rule = make_rule(
+                    zone=self._zone, group=form["group"], lux_below=form.get("lux_below") or 0,
+                    action=form["action"], pct=form.get("pct") or 0,
+                    presence=form.get("presence") == "yes",
+                    window="evening" if form.get("window") == "evening" else "",
+                    min=had.get("min", 0), max=had.get("max", 100),
+                    gain=had.get("gain", 1), evening_mult=had.get("evening_mult", 1))
+                before = list(self.cfg.get("rules") or [])
+                ops.upsert_rule(self.cfg, rule)
+                if self._errors():
+                    self.cfg["rules"] = before
+                    errors = self._errors()
+                else:
+                    return await self._go(self._after_rule)
+        current = self._rule_of(groups[0]["key"]) if groups else None
+        fields = {}
+        if groups:
+            group_key, group_sel = self._choice(
+                labels["group"], (current or {}).get("group") or groups[0]["key"],
+                [(g["key"], g["name"]) for g in groups])
+            lux_key, lux_sel = self._num_field(labels["lux_below"], (current or {}).get("lux_below", 0), lo=0, hi=100000, step=1, unit="lx")
+            act_key, act_sel = self._choice(labels["action"], (current or {}).get("action") or "target", [
+                ("target", self._t("Target", "Цель")), ("step", self._t("Step", "Шаг"))])
+            pct_key, pct_sel = self._num_field(labels["pct"], (current or {}).get("pct", 0), lo=0, hi=100, step=1, unit="%")
+            pres_key, pres_sel = self._choice(
+                labels["presence"], "yes" if (current or {}).get("presence") else "no",
+                [("yes", self._t("Required", "Нужно")), ("no", self._t("Does not matter", "Не важно"))])
+            win_key, win_sel = self._choice(
+                labels["window"], (current or {}).get("window") or "",
+                [("", self._t("Any time", "В любое время")), ("evening", self._t("Evening only", "Только вечер"))])
+            fields = {group_key: group_sel, lux_key: lux_sel, act_key: act_sel, pct_key: pct_sel, pres_key: pres_sel, win_key: win_sel}
+        return self.async_show_form(
+            step_id="zone_rules", data_schema=vol.Schema(fields), errors=errors,
+            description_placeholders={"zone": self._zone_name()})
+
+    async def async_step_zone_extra(self, user_input=None):
+        """Extra settings: min, max, gain and evening_mult of a rule that already exists."""
+        labels = self._extra_labels()
+        have = ops.rules_in(self.cfg, self._zone)
+        errors = {}
+        if not have:
+            errors = {"base": "rule_needs_scenario"}
+        elif user_input is not None:
+            form = self._read(user_input, labels)
+            had = self._rule_of(form.get("group") or "")
+            if had is None:
+                errors = {"base": "rule_needs_scenario"}
+            else:
+                rule = make_rule(**{**had, "min": form.get("min", had["min"]), "max": form.get("max", had["max"]),
+                                    "gain": form.get("gain", had["gain"]),
+                                    "evening_mult": form.get("evening_mult", had["evening_mult"])})
+                before = list(self.cfg.get("rules") or [])
+                ops.upsert_rule(self.cfg, rule)
+                if self._errors():
+                    self.cfg["rules"] = before
+                    errors = self._errors()
+                else:
+                    return await self._go(self._after_rule)
+        current = have[0] if have else None
+        fields = {}
+        if current:
+            by_key = {g["key"]: g["name"] for g in self._zone_groups()}
+            group_key, group_sel = self._choice(
+                labels["group"], current["group"], [(r["group"], by_key.get(r["group"], r["group"])) for r in have])
+            min_key, min_sel = self._num_field(labels["min"], current["min"], lo=0, hi=100, step=1, unit="%")
+            max_key, max_sel = self._num_field(labels["max"], current["max"], lo=0, hi=100, step=1, unit="%")
+            gain_key, gain_sel = self._num_field(labels["gain"], current["gain"], lo=0, hi=10, step=0.1)
+            em_key, em_sel = self._num_field(labels["evening_mult"], current["evening_mult"], lo=0, hi=2, step=0.1)
+            fields = {group_key: group_sel, min_key: min_sel, max_key: max_sel, gain_key: gain_sel, em_key: em_sel}
+        return self.async_show_form(
+            step_id="zone_extra", data_schema=vol.Schema(fields), errors=errors,
+            description_placeholders={"zone": self._zone_name()})
+
     # ---- final check
     def _errors(self) -> dict:
         errs = validate(normalise(self.cfg))
@@ -278,6 +414,7 @@ class AdaptiveLightConfigFlow(EditorMixin, config_entries.ConfigFlow, domain=DOM
     _after_zone_sensors = "zone_lamps"
     _after_zone_lamps = "groups_menu"
     _after_group = "groups_menu"
+    _after_rule = "groups_menu"
     _after_params = "save"
 
     def __init__(self) -> None:
@@ -334,7 +471,7 @@ class AdaptiveLightConfigFlow(EditorMixin, config_entries.ConfigFlow, domain=DOM
     async def async_step_groups_menu(self, user_input=None):
         return self.async_show_menu(
             step_id="groups_menu",
-            menu_options=self._menu("groups_menu", ["group_add", "more_zones"]))
+            menu_options=self._menu("groups_menu", ["group_add", "zone_rules", "zone_extra", "more_zones"]))
 
     async def async_step_more_zones(self, user_input=None):
         return self.async_show_menu(step_id="more_zones", menu_options=["zone", "save"])
@@ -354,6 +491,7 @@ class AdaptiveLightOptionsFlow(EditorMixin, config_entries.OptionsFlow):
     _after_zone_sensors = "zone_menu"
     _after_zone_lamps = "zone_menu"
     _after_group = "zone_menu"
+    _after_rule = "zone_menu"
     _after_params = "init"
 
     def __init__(self) -> None:
@@ -402,7 +540,8 @@ class AdaptiveLightOptionsFlow(EditorMixin, config_entries.OptionsFlow):
         return self.async_show_menu(
             step_id="zone_menu",
             menu_options=self._menu("zone_menu", [
-                "zone_sensors", "zone_lamps", "group_add", "zone_params", "zone_remove", "init"]),
+                "zone_sensors", "zone_lamps", "group_add", "zone_params", "zone_rules", "zone_extra",
+                "zone_remove", "init"]),
             description_placeholders={"zone": self._zone_name()})
 
     async def async_step_zone_params(self, user_input=None):

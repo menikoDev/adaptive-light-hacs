@@ -72,6 +72,14 @@
           "share_pause": "Manual change pauses the whole group"
         }
       },
+      "zone_rules": {
+        "title": "Behaviour scenarios of {zone}",
+        "description": "One rule: the lamp group, the lux threshold, and a step or a target. Presence is a trigger next to the lux reading. The time window is a condition. Minimum and maximum do not start the rule."
+      },
+      "zone_extra": {
+        "title": "Extra settings of {zone}",
+        "description": "Coefficients of the same rule. Minimum and maximum bound the action. Gain and the evening multiplier scale it. They do not start the rule. The group must already have a scenario."
+      },
       "group_edit": {
         "title": "Group {group}",
         "description": "",
@@ -162,6 +170,8 @@
         "title": "Adaptive Light",
         "menu_options": {
           "group_add": "Add a lamp group",
+          "zone_rules": "Behaviour scenarios",
+          "zone_extra": "Extra settings",
           "more_zones": "Continue"
         }
       },
@@ -191,6 +201,8 @@
           "zone_lamps": "Add lamps",
           "group_add": "Add a group",
           "zone_params": "Zone parameters",
+          "zone_rules": "Behaviour scenarios",
+          "zone_extra": "Extra settings",
           "zone_remove": "Remove zone",
           "init": "Back"
         }
@@ -226,7 +238,9 @@
       "zone_needs_name": "Enter a zone name",
       "no_zones": "Add at least one zone",
       "group_needs_lamps": "Pick at least one lamp",
-      "bad_rule": "Invalid rule"
+      "bad_rule": "Invalid rule",
+      "rule_needs_group": "Add a lamp group first",
+      "rule_needs_scenario": "Add a behaviour scenario first"
     },
     "abort": {
       "single_instance_allowed": "Already configured."
@@ -304,6 +318,14 @@
           "share_pause": "Manual change pauses the whole group"
         }
       },
+      "zone_rules": {
+        "title": "Behaviour scenarios of {zone}",
+        "description": "One rule: the lamp group, the lux threshold, and a step or a target. Presence is a trigger next to the lux reading. The time window is a condition. Minimum and maximum do not start the rule."
+      },
+      "zone_extra": {
+        "title": "Extra settings of {zone}",
+        "description": "Coefficients of the same rule. Minimum and maximum bound the action. Gain and the evening multiplier scale it. They do not start the rule. The group must already have a scenario."
+      },
       "group_edit": {
         "title": "Group {group}",
         "description": "",
@@ -394,6 +416,8 @@
         "title": "Adaptive Light",
         "menu_options": {
           "group_add": "Add a lamp group",
+          "zone_rules": "Behaviour scenarios",
+          "zone_extra": "Extra settings",
           "more_zones": "Continue"
         }
       },
@@ -423,6 +447,8 @@
           "zone_lamps": "Add lamps",
           "group_add": "Add a group",
           "zone_params": "Zone parameters",
+          "zone_rules": "Behaviour scenarios",
+          "zone_extra": "Extra settings",
           "zone_remove": "Remove zone",
           "init": "Back"
         }
@@ -458,7 +484,9 @@
       "zone_needs_name": "Enter a zone name",
       "no_zones": "Add at least one zone",
       "group_needs_lamps": "Pick at least one lamp",
-      "bad_rule": "Invalid rule"
+      "bad_rule": "Invalid rule",
+      "rule_needs_group": "Add a lamp group first",
+      "rule_needs_scenario": "Add a behaviour scenario first"
     }
   },
   "selector": {

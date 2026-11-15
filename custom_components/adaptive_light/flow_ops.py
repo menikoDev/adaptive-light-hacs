@@ -125,3 +125,14 @@ def overrides(cfg: dict, level: str, target: str = "") -> dict:
     return dict(holder(cfg, level, target).get("params", {}))
 
 
+def rules_in(cfg: dict, zone: str) -> list[dict]:
+    return [r for r in cfg.get("rules") or [] if r.get("zone") == zone]
+
+
+def upsert_rule(cfg: dict, rule: dict) -> None:
+    """One rule per zone and group. A second save of the same pair replaces it."""
+    cfg["rules"] = [r for r in cfg.get("rules") or []
+                    if not (r.get("zone") == rule["zone"] and r.get("group") == rule["group"])]
+    cfg["rules"].append(rule)
+
+

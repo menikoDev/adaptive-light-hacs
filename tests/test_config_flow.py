@@ -240,3 +240,61 @@ def test_zone_sensors_keep_one_presence_sensor_and_accept_several():
     assert got == [one, "binary_sensor.living_room_presence_sensor_entrance_zone"]
 
 
+def _names(result):
+    return [str(k) for k in result["data_schema"].schema]
+
+
+def test_the_wizard_enters_one_rule_on_two_screens():
+    """Behaviour scenarios and extra settings write the same rule. No role fields."""
+    from adaptive_light.model import RULE_FIELDS
+    f = Wizard(draft.MemoryDraftStore())
+    sub(f, "global_sensors", {})
+    sub(f, "zone_name", {"name": "Hall"})
+    sub(f, "zone_sensors", {})
+    sub(f, "zone_lamps", {"lamps": ["light.hall_a", "light.hall_b"]})
+    menu = sub(f, "groups_menu")["menu_options"]
+    assert menu["zone_rules"] == "Behaviour scenarios" and menu["zone_extra"] == "Extra settings"
+    blocked = sub(f, "zone_extra")
+    assert blocked["errors"]["base"] == "rule_needs_scenario" and _names(blocked) == []
+    sub(f, "group_add", {"name": "Glow", "lamps": ["hall_a"], "share_pause": False})
+    form = sub(f, "zone_rules")
+    assert _names(form) == ["Group", "Below, lx", "Action", "Brightness, %", "Presence", "Time window"]
+    assert not {"sofa", "table", "fridge", "carpet"} & set(_names(form))
+    sub(f, "zone_rules", {
+        "Group": "glow", "Below, lx": 15, "Action": "step", "Brightness, %": 20,
+        "Presence": "yes", "Time window": "evening",
+    })
+    assert f.cfg["rules"] and set(f.cfg["rules"][0]) == set(RULE_FIELDS)
+    rule = f.cfg["rules"][0]
+    assert rule["zone"] == "hall" and rule["group"] == "glow"
+    assert rule["lux_below"] == 15 and rule["action"] == "step" and rule["pct"] == 20
+    assert rule["presence"] is True and rule["window"] == "evening"
+    extra = sub(f, "zone_extra")
+    assert _names(extra) == ["Group", "Minimum, %", "Maximum, %", "Gain", "Evening multiplier"]
+    sub(f, "zone_extra", {"Group": "glow", "Minimum, %": 0, "Maximum, %": 40, "Gain": 1, "Evening multiplier": 0.5})
+    saved = f.cfg["rules"]
+    assert len(saved) == 1 and set(saved[0]) == set(RULE_FIELDS)
+    assert saved[0]["lux_below"] == 15 and saved[0]["action"] == "step" and saved[0]["presence"] is True
+    assert saved[0]["max"] == 40 and saved[0]["evening_mult"] == 0.5
+    HASS.config.language = "ru"
+    try:
+        ru = sub(f, "zone_rules")
+        assert _names(ru)[0] == "Группа" and "Присутствие" in _names(ru) and "Окно времени" in _names(ru)
+        assert sub(f, "groups_menu")["menu_options"]["zone_extra"] == "Доп. настройки"
+    finally:
+        HASS.config.language = "en"
+    # the same two screens in the options flow of an already created zone
+    g = Options(f.cfg)
+    g._load()
+    g._zone = "hall"
+    opt = sub(g, "zone_menu")["menu_options"]
+    assert opt["zone_rules"] == "Behaviour scenarios" and opt["zone_extra"] == "Extra settings"
+    sub(g, "zone_rules", {
+        "Group": "glow", "Below, lx": 30, "Action": "target", "Brightness, %": 25,
+        "Presence": "no", "Time window": "",
+    })
+    again = g.cfg["rules"][0]
+    assert again["action"] == "target" and again["pct"] == 25 and again["presence"] is False and again["window"] == ""
+    assert again["max"] == 40 and again["evening_mult"] == 0.5
+
+
