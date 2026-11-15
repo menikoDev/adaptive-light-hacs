@@ -13,6 +13,7 @@ from homeassistant.util import slugify
 
 from .const import CONF_CONFIG, DOMAIN
 from .model import empty_config, normalise, unique_key, validate
+from .momentary import keep_section
 
 LABELS = {
     "en": {
@@ -200,7 +201,7 @@ class _Fields:
         return self.async_show_form(step_id="zone", data_schema=self._schema(current), errors=errors or None)
 
     def _finish(self, title: str):
-        cfg = normalise(self.cfg)
+        cfg = keep_section(normalise(self.cfg), self.cfg)
         errors = validate(cfg)
         if errors:
             return self._form(self._current(None), {"base": errors[0].code})

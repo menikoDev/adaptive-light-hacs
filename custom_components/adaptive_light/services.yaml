@@ -1,0 +1,11 @@
+momentary_action:
+  name: Momentary action
+  description: Snapshot the lamp, apply the configured color, and restore or turn it off when the timer ends.
+  fields:
+    action:
+      name: Action
+      description: Key of one momentary_actions entry.
+      required: true
+      example: fridge
+      selector:
+        text:
