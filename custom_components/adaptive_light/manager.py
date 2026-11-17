@@ -9,7 +9,7 @@ import time
 from typing import Any, Callable
 
 from .const import DOMAIN
-from .control import LUX_OFF_HOLD, LUX_ON_HOLD, decide, in_night_window, lux_gate
+from .control import LUX_AVERAGE_S, allows_on, average_recheck, decide, in_night_window, lower_lux, window_average
 from .model import Config, outdoor_block
 from .persistence import MANUAL_OFF_EPOCH, PersistedState
 
@@ -29,9 +29,7 @@ class AdaptiveLightManager:
         self._last_motion: dict[str, float] = {}
         self._seen: dict[str, bool] = {}
         self._off_since: dict[str, float] = {}
-        self._below_since: dict[str, float] = {}
-        self._above_since: dict[str, float] = {}
-        self._lux_seen: set[str] = set()
+        self._lux_samples: dict[str, list[tuple[float, float]]] = {}
         self._manual_clear: dict[str, int] = {}
         self._expect: dict[str, str] = {}
         self._own_contexts: set[str] = set()
@@ -135,28 +133,18 @@ class AdaptiveLightManager:
             self._notify()
             return "night"
         level = self.estimate(zone)
-        threshold = float(spec.get("threshold", 50))
-        on_ready, off_ready, below, above, seen = lux_gate(
-            level, threshold, self.now(),
-            self._below_since.get(zone), self._above_since.get(zone), zone in self._lux_seen,
-        )
-        if below is None:
-            self._below_since.pop(zone, None)
-        else:
-            self._below_since[zone] = below
-        if above is None:
-            self._above_since.pop(zone, None)
-        else:
-            self._above_since[zone] = above
-        if seen:
-            self._lux_seen.add(zone)
-        if self.occupied(zone) and off_ready:
+        upper = float(spec.get("threshold", 50))
+        lower = lower_lux(upper, float(spec.get("lux_gap") or 0))
+        if upper > 0 and level is not None:
+            self._note_lux(zone, level)
+        average = window_average(self._lux_samples.get(zone, []), self.now()) if upper > 0 else None
+        if self.occupied(zone) and upper > 0 and level is not None and average is not None and average < lower:
             self._off_since.pop(zone, None)
             await self._set_lamps(spec["lamps"], "off")
             self._notify()
             return "lux"
         command, since = decide(self.occupied(zone), self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
-        if command == "on" and not on_ready:
+        if command == "on" and not allows_on(level, upper):
             command, since = "wait", None
         if since is None:
             self._off_since.pop(zone, None)
@@ -243,6 +231,23 @@ class AdaptiveLightManager:
         self._own_contexts.add(context.id)
         return context
 
+    def _note_lux(self, zone: str, level: float) -> None:
+        samples = self._lux_samples.setdefault(zone, [])
+        now = self.now()
+        if samples and samples[-1][0] == now:
+            samples[-1] = (now, level)
+        else:
+            samples.append((now, level))
+        start = now - LUX_AVERAGE_S
+        keep = 0
+        for index, (stamp, _value) in enumerate(samples):
+            if stamp <= start:
+                keep = index
+            else:
+                break
+        if keep:
+            del samples[:keep]
+
     def _remember_lamps(self) -> None:
         for entity in self._lamps:
             state = self.hass.states.get(entity)
@@ -321,12 +326,12 @@ class AdaptiveLightManager:
             last = self._last_motion.get(zone)
             if last is not None:
                 delays.append(float(spec["night_still"]) * 60 - (self.now() - last))
-        below = self._below_since.get(zone)
-        if below is not None:
-            delays.append(LUX_ON_HOLD - (self.now() - below))
-        above = self._above_since.get(zone)
-        if above is not None:
-            delays.append(LUX_OFF_HOLD - (self.now() - above))
+        if float(spec.get("threshold") or 0) > 0:
+            samples = self._lux_samples.get(zone) or []
+            lower = lower_lux(float(spec.get("threshold") or 0), float(spec.get("lux_gap") or 0))
+            delay = average_recheck(samples, self.now(), lower)
+            if delay is not None:
+                delays.append(delay)
         pending = [item for item in delays if item > 0]
         return min(pending) if pending else None
 

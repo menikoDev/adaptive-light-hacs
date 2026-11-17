@@ -1,5 +1,7 @@
-"""A zone turns lamps on only when someone is present and the estimate is below the threshold."""
+"""Lux on is immediate below the upper threshold. Lux off waits for a 10-minute average below the lower one."""
+from adaptive_light.control import lower_lux
 from adaptive_light.manager import AdaptiveLightManager
+from adaptive_light.model import Config
 from adaptive_light.persistence import MemoryStore
 
 from test_presence import Home, _saw, run
@@ -24,23 +26,40 @@ def ready(home, cfg, presence="on", lamps="off"):
     return AdaptiveLightManager(home, cfg, now=home.now)
 
 
-def test_lux_below_40_turns_on_with_presence():
+def test_current_lux_below_the_upper_threshold_turns_on_immediately():
     home = Home()
-    home.states.set("sensor.room", "30")
-    cfg = raw(lux="sensor.room", threshold=50)
+    home.states.set("sensor.room", "40")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
     mgr = ready(home, cfg)
     assert run(mgr.apply("hall")) == "on"
     assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
-    assert mgr.estimate("hall") == 30
+    assert set(home.services.calls[0][2]) == {"entity_id"}
+    home.t = 1
+    home.services.calls.clear()
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
 
 
-def test_the_band_between_40_and_80_does_not_change_the_lamps():
+def test_a_drop_below_the_upper_threshold_does_not_wait():
     home = Home()
-    home.states.set("sensor.room", "40")
-    cfg = raw(lux="sensor.room", threshold=100)
+    home.states.set("sensor.room", "80")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
     mgr = ready(home, cfg)
     assert run(mgr.apply("hall")) == "wait"
+    assert home.services.calls == []
+    home.t = 1
+    home.states.set("sensor.room", "30")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+
+def test_lux_above_the_upper_threshold_does_not_turn_on():
+    home = Home()
     home.states.set("sensor.room", "80")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
+    mgr = ready(home, cfg)
     assert run(mgr.apply("hall")) == "wait"
     assert home.services.calls == []
 
@@ -48,17 +67,110 @@ def test_the_band_between_40_and_80_does_not_change_the_lamps():
 def test_no_presence_never_turns_on():
     home = Home()
     home.states.set("sensor.room", "10")
-    cfg = raw(lux="sensor.room", threshold=50)
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
     mgr = ready(home, cfg, presence="off")
     assert run(mgr.apply("hall")) == "wait"
     assert home.services.calls == []
+
+
+def test_lux_between_lower_and_upper_does_not_turn_the_light_off():
+    home = Home()
+    home.states.set("sensor.room", "40")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
+    mgr = ready(home, cfg)
+    assert lower_lux(50, 15) == 35
+    assert run(mgr.apply("hall")) == "on"
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    home.services.calls.clear()
+    home.t = 600
+    assert run(mgr.apply("hall")) == "on"
+    home.t = 900
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+    assert mgr.manual_off == set()
+
+
+def test_off_only_when_the_ten_minute_average_is_below_the_lower_threshold():
+    home = Home()
+    home.states.set("sensor.room", "20")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
+    mgr = ready(home, cfg)
+    assert run(mgr.apply("hall")) == "on"
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    home.services.calls.clear()
+    home.t = 599
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+    home.t = 600
+    assert run(mgr.apply("hall")) == "lux"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
+    assert set(home.services.calls[0][2]) == {"entity_id"}
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == set()
+
+
+def test_a_short_spike_does_not_turn_the_light_off():
+    home = Home()
+    home.states.set("sensor.room", "40")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
+    mgr = ready(home, cfg, lamps="on")
+    assert run(mgr.apply("hall")) == "on"
+    home.services.calls.clear()
+    home.t = 600
+    home.states.set("sensor.room", "10")
+    assert run(mgr.apply("hall")) == "on"
+    home.t = 630
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+    home.t = 1200
+    assert run(mgr.apply("hall")) == "lux"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
+
+
+def test_gap_zero_means_the_lower_threshold_equals_the_upper():
+    assert lower_lux(50, 0) == 50
+    loaded = Config.from_dict(raw(lux="sensor.room", threshold=50))
+    assert loaded.zones["hall"]["lux_gap"] == 0
+    assert lower_lux(loaded.zones["hall"]["threshold"], loaded.zones["hall"]["lux_gap"]) == 50
+
+    home = Home()
+    home.states.set("sensor.room", "40")
+    mgr = ready(home, raw(lux="sensor.room", threshold=50))
+    assert run(mgr.apply("hall")) == "on"
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    home.services.calls.clear()
+    home.t = 600
+    assert run(mgr.apply("hall")) == "lux"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == set()
+
+
+def test_threshold_zero_ignores_light_and_does_not_turn_off_for_lux():
+    home = Home()
+    home.states.set("sensor.room", "10000")
+    cfg = raw(lux="sensor.room", threshold=0, lux_gap=15)
+    mgr = ready(home, cfg)
+    assert run(mgr.apply("hall")) == "on"
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    home.services.calls.clear()
+    home.t = 600
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+    assert mgr.manual_off == set()
 
 
 def test_a_zone_without_a_lux_sensor_uses_radiation_times_0_6():
     home = Home()
     home.outdoor = {"radiation": "sensor.rad", "factor": 0.6}
     home.states.set("sensor.rad", "100")
-    cfg = raw(threshold=50)
+    cfg = raw(threshold=50, lux_gap=0)
     mgr = ready(home, cfg)
     assert mgr.estimate("hall") == 60
     assert run(mgr.apply("hall")) == "wait"
@@ -66,8 +178,6 @@ def test_a_zone_without_a_lux_sensor_uses_radiation_times_0_6():
 
     home.states.set("sensor.rad", "50")
     assert mgr.estimate("hall") == 30
-    assert run(mgr.apply("hall")) == "wait"
-    home.t = 120
     assert run(mgr.apply("hall")) == "on"
     assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
 
@@ -82,52 +192,10 @@ def test_empty_outdoor_stays_on_presence_only():
     assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
 
 
-def test_threshold_zero_ignores_light_and_does_not_morning_off():
-    home = Home()
-    home.states.set("sensor.room", "10000")
-    cfg = raw(lux="sensor.room", threshold=0)
-    mgr = ready(home, cfg)
-    assert run(mgr.apply("hall")) == "on"
-    _saw(mgr, home, "light.a", "on")
-    _saw(mgr, home, "light.b", "on")
-    home.services.calls.clear()
-    assert run(mgr.apply("hall")) == "on"
-    assert home.services.calls == []
-    assert mgr.manual_off == set()
-
-
-def test_estimate_above_the_threshold_turns_lamps_off_without_manual_off():
-    home = Home()
-    home.states.set("sensor.room", "20")
-    cfg = raw(lux="sensor.room", threshold=50)
-    mgr = ready(home, cfg)
-    assert run(mgr.apply("hall")) == "on"
-    _saw(mgr, home, "light.a", "on")
-    _saw(mgr, home, "light.b", "on")
-    home.services.calls.clear()
-    home.states.set("sensor.room", "90")
-    assert run(mgr.apply("hall")) == "wait"
-    home.t = 599
-    assert run(mgr.apply("hall")) == "wait"
-    assert home.services.calls == []
-    home.t = 600
-    assert run(mgr.apply("hall")) == "lux"
-    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
-    assert set(home.services.calls[0][2]) == {"entity_id"}
-    _saw(mgr, home, "light.a", "off")
-    _saw(mgr, home, "light.b", "off")
-    assert mgr.manual_off == set()
-    home.states.set("sensor.room", "10")
-    home.services.calls.clear()
-    assert run(mgr.apply("hall")) == "wait"
-    home.t = 720
-    assert run(mgr.apply("hall")) == "on"
-
-
 def test_manual_off_and_the_timeout_still_work():
     home = Home()
     home.states.set("sensor.room", "10")
-    cfg = raw(lux="sensor.room", threshold=50, timeout=30)
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15, timeout=30)
     mgr = ready(home, cfg)
     assert run(mgr.apply("hall")) == "on"
     _saw(mgr, home, "light.a", "on")
@@ -148,10 +216,10 @@ def test_manual_off_and_the_timeout_still_work():
     assert "light.b" not in mgr.manual_off
 
 
-def test_already_occupied_and_below_threshold_turns_on_without_a_presence_edge():
+def test_already_occupied_and_below_the_upper_threshold_turns_on_without_a_presence_edge():
     home = Home()
     home.states.set("sensor.room", "30")
-    cfg = raw(lux="sensor.room", threshold=100, timeout=300)
+    cfg = raw(lux="sensor.room", threshold=100, lux_gap=15, timeout=300)
     home.states.set("binary_sensor.p", "on")
     home.states.set("light.a", "off")
     home.states.set("light.b", "off")
@@ -161,35 +229,12 @@ def test_already_occupied_and_below_threshold_turns_on_without_a_presence_edge()
     assert mgr.manual_off == set()
     assert run(mgr.apply("hall")) == "on"
     assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
-    assert set(home.services.calls[0][2]) == {"entity_id"}
-
-
-def test_estimate_dropping_below_threshold_turns_on_while_still_occupied():
-    home = Home()
-    home.states.set("sensor.room", "150")
-    cfg = raw(lux="sensor.room", threshold=100)
-    mgr = ready(home, cfg, lamps="on")
-    assert run(mgr.apply("hall")) == "wait"
-    home.t = 600
-    assert run(mgr.apply("hall")) == "lux"
-    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
-    _saw(mgr, home, "light.a", "off")
-    _saw(mgr, home, "light.b", "off")
-    mgr.note_lamp_change("light.a", "off")
-    mgr.note_lamp_change("light.b", "off")
-    assert mgr.manual_off == set()
-    home.services.calls.clear()
-    home.states.set("sensor.room", "30")
-    assert run(mgr.apply("hall")) == "wait"
-    home.t = 720
-    assert run(mgr.apply("hall")) == "on"
-    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
 
 
 def test_a_manual_off_saved_before_the_fix_does_not_keep_the_lamps_off():
     home = Home()
     home.states.set("sensor.room", "20")
-    cfg = raw(lux="sensor.room", threshold=100, timeout=300)
+    cfg = raw(lux="sensor.room", threshold=100, lux_gap=15, timeout=300)
     store = MemoryStore({
         "version": 3,
         "enabled": {"hall": True},
@@ -207,7 +252,7 @@ def test_a_manual_off_saved_before_the_fix_does_not_keep_the_lamps_off():
 def test_a_real_manual_off_saved_after_the_fix_still_blocks():
     home = Home()
     home.states.set("sensor.room", "20")
-    cfg = raw(lux="sensor.room", threshold=100)
+    cfg = raw(lux="sensor.room", threshold=100, lux_gap=15)
     store = MemoryStore()
     mgr = ready(home, cfg, lamps="on")
     mgr.store = store
@@ -228,45 +273,10 @@ def test_a_real_manual_off_saved_after_the_fix_still_blocks():
     assert again.services.calls == [("light", "turn_on", {"entity_id": ["light.b"]})]
 
 
-def test_a_room_sensor_is_not_added_to_outdoor_radiation():
-    home = Home()
-    home.outdoor = {"radiation": "sensor.rad", "factor": 0.6}
-    home.states.set("sensor.room", "40")
-    home.states.set("sensor.rad", "1000")
-    cfg = raw(lux="sensor.room", lux_coefficient=2, threshold=100)
-    mgr = ready(home, cfg)
-    assert mgr.estimate("hall") == 80
-    assert run(mgr.apply("hall")) == "wait"
-    assert home.services.calls == []
-
-
-def test_a_short_spike_does_not_toggle_the_lamps():
-    home = Home()
-    home.states.set("sensor.room", "60")
-    cfg = raw(lux="sensor.room", threshold=50)
-    mgr = ready(home, cfg, lamps="on")
-    assert run(mgr.apply("hall")) == "wait"
-    home.states.set("sensor.room", "20")
-    assert run(mgr.apply("hall")) == "wait"
-    home.t = 119
-    assert run(mgr.apply("hall")) == "wait"
-    home.states.set("sensor.room", "55")
-    assert run(mgr.apply("hall")) == "wait"
-    home.states.set("sensor.room", "100")
-    home.t = 200
-    assert run(mgr.apply("hall")) == "wait"
-    home.t = 200 + 599
-    assert run(mgr.apply("hall")) == "wait"
-    home.states.set("sensor.room", "70")
-    home.t = 2000
-    assert run(mgr.apply("hall")) == "wait"
-    assert home.services.calls == []
-
-
-def test_saving_the_zone_clears_a_stuck_manual_off_and_turns_on_below_40():
+def test_saving_the_zone_clears_a_stuck_manual_off_and_turns_on_below_the_upper_threshold():
     home = Home()
     home.states.set("sensor.room", "25")
-    cfg = raw(lux="sensor.room", threshold=100, manual_clear=1)
+    cfg = raw(lux="sensor.room", threshold=100, lux_gap=15, manual_clear=1)
     store = MemoryStore({
         "version": 3,
         "enabled": {"hall": True},
@@ -281,3 +291,15 @@ def test_saving_the_zone_clears_a_stuck_manual_off_and_turns_on_below_40():
     assert run(mgr.apply("hall")) == "on"
     assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
     assert set(home.services.calls[0][2]) == {"entity_id"}
+
+
+def test_a_room_sensor_is_not_added_to_outdoor_radiation():
+    home = Home()
+    home.outdoor = {"radiation": "sensor.rad", "factor": 0.6}
+    home.states.set("sensor.room", "30")
+    home.states.set("sensor.rad", "1000")
+    cfg = raw(lux="sensor.room", lux_coefficient=2, threshold=100, lux_gap=15)
+    mgr = ready(home, cfg)
+    assert mgr.estimate("hall") == 60
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]

@@ -37,39 +37,82 @@ def light_estimate(room_lux: float | None, room_coefficient: float, radiation: f
     return None
 
 
-LUX_ON = 40.0
-LUX_OFF = 80.0
-LUX_ON_HOLD = 120.0
-LUX_OFF_HOLD = 600.0
+LUX_AVERAGE_S = 600.0
 
 
-def lux_gate(
-    estimate: float | None,
-    threshold: float,
-    now: float,
-    below_since: float | None,
-    above_since: float | None,
-    seen: bool,
-) -> tuple[bool, bool, float | None, float | None, bool]:
-    """Return ``(on_ready, morning_off, below_since, above_since, seen)``.
+def lower_lux(upper: float, gap: float) -> float:
+    """Lower threshold is the upper threshold minus the gap. A gap of 0 keeps them equal."""
+    if gap <= 0:
+        return upper
+    return max(0.0, upper - gap)
 
-    Threshold 0, or no numeric estimate, ignores light. Otherwise the lamps turn on
-    only below 40 lx and the morning turns them off only above 80 lx. The band in
-    between does not change the lamps. A later dip below 40 must last 2 minutes, and
-    a rise above 80 must last 10 minutes. The first sample below 40 is already dark
-    enough, so a save can turn the lamps on at once.
+
+def allows_on(estimate: float | None, upper: float) -> bool:
+    """Turn on from the current reading. Threshold 0, or no reading, does not block."""
+    if upper <= 0 or estimate is None:
+        return True
+    return estimate < upper
+
+
+def window_average(samples: list[tuple[float, float]], now: float, window: float = LUX_AVERAGE_S) -> float | None:
+    """Time-weighted mean of the last ``window`` seconds.
+
+    ``None`` until the samples cover that whole span, so a short spike cannot decide the off.
+    Each sample holds until the next one.
     """
-    if threshold <= 0 or estimate is None:
-        return True, False, None, None, seen
-    if estimate < LUX_ON:
-        if below_since is None:
-            below_since = now if seen else now - LUX_ON_HOLD
-        return now - below_since >= LUX_ON_HOLD, False, below_since, None, True
-    if estimate > LUX_OFF:
-        if above_since is None:
-            above_since = now
-        return False, now - above_since >= LUX_OFF_HOLD, None, above_since, True
-    return False, False, None, None, True
+    if not samples or window <= 0:
+        return None
+    start = now - window
+    if samples[0][0] > start:
+        return None
+    index = 0
+    while index + 1 < len(samples) and samples[index + 1][0] <= start:
+        index += 1
+    total = 0.0
+    covered = 0.0
+    moment = start
+    value = samples[index][1]
+    index += 1
+    while index < len(samples) and samples[index][0] < now:
+        nxt = samples[index][0]
+        total += value * (nxt - moment)
+        covered += nxt - moment
+        moment = nxt
+        value = samples[index][1]
+        index += 1
+    if now > moment:
+        total += value * (now - moment)
+        covered += now - moment
+    if covered <= 0:
+        return None
+    return total / covered
+
+
+def average_recheck(samples: list[tuple[float, float]], now: float, lower: float, window: float = LUX_AVERAGE_S) -> float | None:
+    """Seconds until the 10-minute average should be read again. ``None`` when it will not move."""
+    if not samples:
+        return None
+    if samples[0][0] > now - window:
+        return samples[0][0] + window - now
+    average = window_average(samples, now, window)
+    if average is None or average < lower:
+        return None
+    start = now - window
+    edge = samples[0][1]
+    nxt = None
+    for stamp, value in samples:
+        if stamp <= start:
+            edge = value
+        elif nxt is None:
+            nxt = stamp
+    current = samples[-1][1]
+    bound = window if nxt is None else nxt + window - now
+    slope = (current - edge) / window
+    if slope < 0:
+        cross = (lower - average) / slope
+        if 0 < cross <= bound:
+            return cross
+    return bound if bound > 0 else None
 
 
 def decide(occupied: bool, off_since: float | None, now: float, timeout: float) -> tuple[str, float | None]:

@@ -101,12 +101,15 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     threshold = _timeout(raw.get("threshold"))
     if threshold is None:
         threshold = 50
+    gap = _timeout(raw.get("lux_gap"))
+    if gap is None:
+        gap = 0
     generation = raw.get("manual_clear")
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
         generation = 0
     return {
         "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
-        "lux": lux, "threshold": threshold, "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
+        "lux": lux, "threshold": threshold, "lux_gap": gap, "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
         "manual_clear": generation,
         "night": raw.get("night") is True,
         "night_start": _clock(raw.get("night_start"), "02:00"),

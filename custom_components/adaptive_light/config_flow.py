@@ -123,6 +123,13 @@ class _Fields:
             )),
             current.get("threshold", 50),
         )
+        gap, gap_sel = self._field(
+            "lux_gap",
+            sel.NumberSelector(sel.NumberSelectorConfig(
+                min=0, max=100000, step=1, unit_of_measurement="lx", mode=sel.NumberSelectorMode.BOX,
+            )),
+            current.get("lux_gap", 0),
+        )
         timeout, timeout_sel = self._field(
             "off_timeout",
             sel.NumberSelector(sel.NumberSelectorConfig(
@@ -139,7 +146,7 @@ class _Fields:
             current.get("night_still", 60),
         )
         return vol.Schema({
-            name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel,
+            name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, gap: gap_sel,
             timeout: timeout_sel, night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
 
@@ -174,6 +181,12 @@ class _Fields:
             threshold = _timeout(user_input.get("threshold"))
             if threshold is None:
                 errors["threshold"] = "bad_threshold"
+        if "lux_gap" not in user_input or user_input.get("lux_gap") in (None, ""):
+            gap = 0
+        else:
+            gap = _timeout(user_input.get("lux_gap"))
+            if gap is None:
+                errors["lux_gap"] = "bad_gap"
         night = user_input.get("night") is True
         start = _hhmm(user_input.get("night_start")) or "02:00"
         end = _hhmm(user_input.get("night_end")) or "06:00"
@@ -190,7 +203,7 @@ class _Fields:
                 coefficient = zone["lux_coefficient"]
         return {
             "name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout,
-            "lux": lux, "threshold": threshold, "lux_coefficient": coefficient,
+            "lux": lux, "threshold": threshold, "lux_gap": gap, "lux_coefficient": coefficient,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
         }, {}
 
