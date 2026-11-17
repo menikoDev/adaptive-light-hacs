@@ -9,7 +9,7 @@ import time
 from typing import Any, Callable
 
 from .const import DOMAIN
-from .control import decide, in_night_window, light_allows_on, morning_off
+from .control import LUX_OFF_HOLD, LUX_ON_HOLD, decide, in_night_window, lux_gate
 from .model import Config, outdoor_block
 from .persistence import MANUAL_OFF_EPOCH, PersistedState
 
@@ -29,6 +29,10 @@ class AdaptiveLightManager:
         self._last_motion: dict[str, float] = {}
         self._seen: dict[str, bool] = {}
         self._off_since: dict[str, float] = {}
+        self._below_since: dict[str, float] = {}
+        self._above_since: dict[str, float] = {}
+        self._lux_seen: set[str] = set()
+        self._manual_clear: dict[str, int] = {}
         self._expect: dict[str, str] = {}
         self._own_contexts: set[str] = set()
         self._lamp_seen: dict[str, str] = {}
@@ -85,6 +89,18 @@ class AdaptiveLightManager:
         self._night_hold = set(saved.night_hold)
         if saved.manual_off_epoch < MANUAL_OFF_EPOCH:
             self.manual_off.clear()
+        cleared = False
+        for zone, spec in self.cfg.zones.items():
+            generation = spec.get("manual_clear") or 0
+            known = saved.manual_clear.get(zone, 0)
+            if isinstance(generation, int) and generation > known:
+                for lamp in spec["lamps"]:
+                    if lamp in self.manual_off:
+                        cleared = True
+                    self.manual_off.discard(lamp)
+            self._manual_clear[zone] = max(generation if isinstance(generation, int) else 0, known)
+        if cleared:
+            self.save()
 
     def save(self) -> None:
         if self.store is None:
@@ -92,7 +108,9 @@ class AdaptiveLightManager:
         self.store.async_delay_save(self._snapshot)
 
     def _snapshot(self) -> dict:
-        return PersistedState(dict(self.enabled), set(self.manual_off), set(self._night_hold)).to_dict()
+        return PersistedState(
+            dict(self.enabled), set(self.manual_off), set(self._night_hold), manual_clear=dict(self._manual_clear),
+        ).to_dict()
 
     async def apply(self, zone: str) -> str:
         """Apply the presence rule. Service data is only the lamp entity ids."""
@@ -118,13 +136,27 @@ class AdaptiveLightManager:
             return "night"
         level = self.estimate(zone)
         threshold = float(spec.get("threshold", 50))
-        if self.occupied(zone) and morning_off(level, threshold):
+        on_ready, off_ready, below, above, seen = lux_gate(
+            level, threshold, self.now(),
+            self._below_since.get(zone), self._above_since.get(zone), zone in self._lux_seen,
+        )
+        if below is None:
+            self._below_since.pop(zone, None)
+        else:
+            self._below_since[zone] = below
+        if above is None:
+            self._above_since.pop(zone, None)
+        else:
+            self._above_since[zone] = above
+        if seen:
+            self._lux_seen.add(zone)
+        if self.occupied(zone) and off_ready:
             self._off_since.pop(zone, None)
             await self._set_lamps(spec["lamps"], "off")
             self._notify()
             return "lux"
         command, since = decide(self.occupied(zone), self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
-        if command == "on" and not light_allows_on(level, threshold):
+        if command == "on" and not on_ready:
             command, since = "wait", None
         if since is None:
             self._off_since.pop(zone, None)
@@ -289,6 +321,12 @@ class AdaptiveLightManager:
             last = self._last_motion.get(zone)
             if last is not None:
                 delays.append(float(spec["night_still"]) * 60 - (self.now() - last))
+        below = self._below_since.get(zone)
+        if below is not None:
+            delays.append(LUX_ON_HOLD - (self.now() - below))
+        above = self._above_since.get(zone)
+        if above is not None:
+            delays.append(LUX_OFF_HOLD - (self.now() - above))
         pending = [item for item in delays if item > 0]
         return min(pending) if pending else None
 

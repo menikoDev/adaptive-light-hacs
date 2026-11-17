@@ -37,7 +37,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on only while the light estimate is below the threshold. When all sensors have been off for the timeout, the lamps turn off. Above the threshold the lamps turn off even if someone remains. Threshold 0 follows presence only. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed. Another zone is added as another entry.",
+        "description": "One zone, on its own. When someone is present and the estimate stays below 40 lx, these lamps turn on. A short dip must last 2 minutes; the reading just after a save turns them on at once if it is already below 40. When all sensors have been off for the timeout, the lamps turn off. Above 80 lx for 10 minutes the lamps turn off even if someone remains. Between 40 and 80 lx the light does not change the lamps. Threshold 0 follows presence only. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed. Another zone is added as another entry.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -99,7 +99,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When any presence sensor turns on, these lamps turn on only while the light estimate is below the threshold. When all sensors have been off for the timeout, the lamps turn off. Above the threshold the lamps turn off even if someone remains. Threshold 0 follows presence only. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed.",
+        "description": "One zone, on its own. When someone is present and the estimate stays below 40 lx, these lamps turn on. A short dip must last 2 minutes; the reading just after a save turns them on at once if it is already below 40. When all sensors have been off for the timeout, the lamps turn off. Above 80 lx for 10 minutes the lamps turn off even if someone remains. Between 40 and 80 lx the light does not change the lamps. Threshold 0 follows presence only. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Brightness and color are not changed.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",

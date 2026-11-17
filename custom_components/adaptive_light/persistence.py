@@ -19,6 +19,7 @@ class PersistedState:
     manual_off: set[str] = field(default_factory=set)
     night_hold: set[str] = field(default_factory=set)
     manual_off_epoch: int = 0
+    manual_clear: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -27,6 +28,7 @@ class PersistedState:
             "manual_off": sorted(self.manual_off),
             "night_hold": sorted(self.night_hold),
             "manual_off_epoch": MANUAL_OFF_EPOCH,
+            "manual_clear": {key: value for key, value in sorted(self.manual_clear.items())},
         }
 
     @classmethod
@@ -51,6 +53,11 @@ class PersistedState:
         epoch = data.get("manual_off_epoch")
         if isinstance(epoch, int) and not isinstance(epoch, bool) and epoch >= 0:
             state.manual_off_epoch = epoch
+        clears = data.get("manual_clear")
+        if isinstance(clears, dict):
+            for key, value in clears.items():
+                if isinstance(key, str) and (zones is None or key in zones) and isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    state.manual_clear[key] = value
         return state
 
 

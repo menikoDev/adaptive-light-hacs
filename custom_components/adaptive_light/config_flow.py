@@ -198,8 +198,14 @@ class _Fields:
         actions = self.cfg.get("momentary_actions") if isinstance(self.cfg, dict) else None
         if not self._zone:
             self._zone = unique_key(slugify(parsed["name"]) or "zone", self._used_keys())
+        previous_clear = 0
+        for zone in self.cfg.get("zones") or []:
+            if isinstance(zone, dict) and zone.get("key") == self._zone:
+                generation = zone.get("manual_clear")
+                if isinstance(generation, int) and not isinstance(generation, bool) and generation > 0:
+                    previous_clear = generation
         self.cfg = empty_config()
-        self.cfg["zones"] = [{"key": self._zone, **parsed}]
+        self.cfg["zones"] = [{"key": self._zone, **parsed, "manual_clear": previous_clear + 1}]
         if isinstance(actions, list):
             self.cfg["momentary_actions"] = actions
         return parsed["name"]

@@ -25,7 +25,7 @@ from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
 FIELDS = ["name", "lamps", "presence", "lux", "threshold", "off_timeout", "night", "night_start", "night_end", "night_still"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "lux_coefficient", "off_timeout", "night", "night_start", "night_end", "night_still"}
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
 def run(coro):
@@ -129,6 +129,7 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
     zones = saved["data"]["config"]["zones"]
     assert len(zones) == 1 and set(zones[0]) == ZONE_KEYS
     assert zones[0]["key"] == "hall" and zones[0]["name"] == "Hall renamed"
+    assert zones[0]["manual_clear"] == 1
     assert zones[0]["lamps"] == ["light.a"] and zones[0]["off_timeout"] == 10
     assert options.config_entry.title == "Hall renamed"
 

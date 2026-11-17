@@ -37,18 +37,39 @@ def light_estimate(room_lux: float | None, room_coefficient: float, radiation: f
     return None
 
 
-def light_allows_on(estimate: float | None, threshold: float) -> bool:
-    """Presence may turn lamps on when there is no estimate, the threshold is 0, or the room is darker than the threshold."""
-    if threshold <= 0 or estimate is None:
-        return True
-    return estimate < threshold
+LUX_ON = 40.0
+LUX_OFF = 80.0
+LUX_ON_HOLD = 120.0
+LUX_OFF_HOLD = 600.0
 
 
-def morning_off(estimate: float | None, threshold: float) -> bool:
-    """Lamps that are already on go off once the estimate rises above the threshold. Threshold 0 never does this."""
+def lux_gate(
+    estimate: float | None,
+    threshold: float,
+    now: float,
+    below_since: float | None,
+    above_since: float | None,
+    seen: bool,
+) -> tuple[bool, bool, float | None, float | None, bool]:
+    """Return ``(on_ready, morning_off, below_since, above_since, seen)``.
+
+    Threshold 0, or no numeric estimate, ignores light. Otherwise the lamps turn on
+    only below 40 lx and the morning turns them off only above 80 lx. The band in
+    between does not change the lamps. A later dip below 40 must last 2 minutes, and
+    a rise above 80 must last 10 minutes. The first sample below 40 is already dark
+    enough, so a save can turn the lamps on at once.
+    """
     if threshold <= 0 or estimate is None:
-        return False
-    return estimate > threshold
+        return True, False, None, None, seen
+    if estimate < LUX_ON:
+        if below_since is None:
+            below_since = now if seen else now - LUX_ON_HOLD
+        return now - below_since >= LUX_ON_HOLD, False, below_since, None, True
+    if estimate > LUX_OFF:
+        if above_since is None:
+            above_since = now
+        return False, now - above_since >= LUX_OFF_HOLD, None, above_since, True
+    return False, False, None, None, True
 
 
 def decide(occupied: bool, off_since: float | None, now: float, timeout: float) -> tuple[str, float | None]:
