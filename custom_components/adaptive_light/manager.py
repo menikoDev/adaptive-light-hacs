@@ -147,13 +147,15 @@ class AdaptiveLightManager:
             return "night"
         level = self.estimate(zone)
         upper = float(spec.get("threshold", 50))
-        lower = lower_lux(upper, float(spec.get("lux_gap") or 0))
+        gap = float(spec.get("lux_gap") or 0)
+        lower = lower_lux(upper, gap)
         self._log_estimate(zone, spec, level)
         self._log_thresholds(zone, upper, lower)
         if upper > 0 and level is not None:
             self._note_lux(zone, level)
         average = window_average(self._lux_samples.get(zone, []), self.now()) if upper > 0 else None
-        if self.occupied(zone) and upper > 0 and level is not None and average is not None and average < lower:
+        window_full = average is not None
+        if gap > 0 and window_full and self.occupied(zone) and upper > 0 and level is not None and average < lower:
             self._off_since.pop(zone, None)
             self._recheck.discard(zone)
             self._log_decision(zone, "off", "average-below-lower")
@@ -161,7 +163,7 @@ class AdaptiveLightManager:
             self._notify()
             return "lux"
         command, since = decide(self.occupied(zone), self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
-        if command == "on" and not allows_on(level, upper):
+        if command == "on" and not self._lux_allows_on(level, upper, gap, average, lower, window_full):
             command, since = "wait", None
         if since is None:
             self._off_since.pop(zone, None)
@@ -376,6 +378,12 @@ class AdaptiveLightManager:
         self._decision[zone] = new
         self._decision_reason[zone] = reason
         self._emit(zone, zone, old, new, reason)
+
+    def _lux_allows_on(self, level: float | None, upper: float, gap: float, average: float | None, lower: float, window_full: bool) -> bool:
+        """Gap 0 follows the current reading. A positive gap uses the full-window average once it exists."""
+        if gap > 0 and window_full and average is not None:
+            return lower <= average < upper
+        return allows_on(level, upper)
 
     def _on_reason(self, zone: str, level: float | None, upper: float) -> str:
         if zone in self._recheck:

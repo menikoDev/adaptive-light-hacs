@@ -130,25 +130,72 @@ def test_a_short_spike_does_not_turn_the_light_off():
     assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
 
 
-def test_gap_zero_means_the_lower_threshold_equals_the_upper():
+def test_gap_zero_full_window_below_the_upper_threshold_still_turns_on():
     assert lower_lux(50, 0) == 50
     loaded = Config.from_dict(raw(lux="sensor.room", threshold=50))
     assert loaded.zones["hall"]["lux_gap"] == 0
-    assert lower_lux(loaded.zones["hall"]["threshold"], loaded.zones["hall"]["lux_gap"]) == 50
 
     home = Home()
     home.states.set("sensor.room", "40")
     mgr = ready(home, raw(lux="sensor.room", threshold=50))
     assert run(mgr.apply("hall")) == "on"
-    _saw(mgr, home, "light.a", "on")
-    _saw(mgr, home, "light.b", "on")
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
     home.services.calls.clear()
     home.t = 600
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+    assert mgr.manual_off == set()
+
+
+def test_corridor_uses_the_ten_minute_average_and_the_edges():
+    home = Home()
+    home.states.set("sensor.room", "40")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
+    mgr = ready(home, cfg)
+    assert lower_lux(50, 15) == 35
+    assert run(mgr.apply("hall")) == "on"
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    home.services.calls.clear()
+    home.t = 599
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    home.services.calls.clear()
+    home.t = 600
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+    home.states.set("sensor.room", "20")
+    home.t = 601
+    assert run(mgr.apply("hall")) == "on"
+    home.states.set("light.a", "on")
+    home.states.set("light.b", "on")
+    home.services.calls.clear()
+    home.t = 1201
     assert run(mgr.apply("hall")) == "lux"
     assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
-    _saw(mgr, home, "light.a", "off")
-    _saw(mgr, home, "light.b", "off")
-    assert mgr.manual_off == set()
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    home.services.calls.clear()
+    home.t = 1202
+    assert run(mgr.apply("hall")) == "lux"
+    assert home.services.calls == []
+
+
+def test_average_at_or_above_the_upper_threshold_does_not_turn_on():
+    home = Home()
+    home.states.set("sensor.room", "80")
+    cfg = raw(lux="sensor.room", threshold=50, lux_gap=15)
+    mgr = ready(home, cfg)
+    assert run(mgr.apply("hall")) == "wait"
+    home.t = 600
+    home.states.set("sensor.room", "40")
+    assert run(mgr.apply("hall")) == "wait"
+    assert home.services.calls == []
 
 
 def test_threshold_zero_ignores_light_and_does_not_turn_off_for_lux():

@@ -77,33 +77,42 @@ def test_exporter_records_a_state_change_and_a_lamp_event():
     assert set(home.services.calls[0][2]) == {"entity_id"}
 
 
-def test_gap_zero_average_below_lower_is_logged_and_skips_turn_on():
-    """Default gap 0 makes lower equal upper, so a full dark window turns off and does not turn on."""
+def test_gap_zero_full_window_logs_turn_on_not_average_below_lower():
     home = Home()
     mgr = _ready(home)
     assert run(mgr.apply("living_room")) == "on"
     for lamp in ("light.ceiling_1", "light.ceiling_2", "light.ceiling_3"):
-        home.states.set(lamp, "on")
+        home.states.set(lamp, "off")
     home.services.calls.clear()
     log, cap = _logger()
     try:
         home.t = 600
+        assert run(mgr.apply("living_room")) == "on"
+    finally:
+        _stop(log, cap)
+    assert home.services.calls[0][1] == "turn_on"
+    assert any("reason=lux-below-upper" in line and "entity=light.ceiling_1" in line for line in cap.lines)
+    assert not any("reason=average-below-lower" in line for line in cap.lines)
+
+
+def test_corridor_on_and_average_below_lower_are_logged():
+    home = Home()
+    mgr = _ready(home, lux_gap=15)
+    assert run(mgr.apply("living_room")) == "on"
+    for lamp in ("light.ceiling_1", "light.ceiling_2", "light.ceiling_3"):
+        home.states.set(lamp, "off")
+    log, cap = _logger()
+    try:
+        home.t = 600
+        assert run(mgr.apply("living_room")) == "on"
+        home.states.set("sensor.living_room_lux", "20")
+        home.t = 601
+        assert run(mgr.apply("living_room")) == "on"
+        for lamp in ("light.ceiling_1", "light.ceiling_2", "light.ceiling_3"):
+            home.states.set(lamp, "on")
+        home.t = 1201
         assert run(mgr.apply("living_room")) == "lux"
     finally:
         _stop(log, cap)
-    assert home.services.calls == [(
-        "light", "turn_off",
-        {"entity_id": ["light.ceiling_1", "light.ceiling_2", "light.ceiling_3"]},
-    )]
-    assert not any(call[1] == "turn_on" for call in home.services.calls)
-    decision = [line for line in cap.lines if "reason=average-below-lower" in line and "entity=living_room" in line]
-    lamp = [line for line in cap.lines if "entity=light.ceiling_1" in line and "reason=average-below-lower" in line]
-    assert decision and "old=on" in decision[0] and "new=off" in decision[0]
-    assert "ts=1970-01-01T00:10:00Z" in decision[0]
-    assert lamp and "old=on" in lamp[0] and "new=off" in lamp[0]
-    home.services.calls.clear()
-    for lamp_id in ("light.ceiling_1", "light.ceiling_2", "light.ceiling_3"):
-        home.states.set(lamp_id, "off")
-    home.t = 601
-    assert run(mgr.apply("living_room")) == "lux"
-    assert home.services.calls == []
+    assert any("reason=lux-below-upper" in line and "new=on" in line for line in cap.lines)
+    assert any("reason=average-below-lower" in line and "entity=living_room" in line and "new=off" in line for line in cap.lines)
