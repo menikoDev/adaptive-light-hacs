@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from .const import DOMAIN
 from .control import LUX_AVERAGE_S, allows_on, average_recheck, decide, in_night_window, lower_lux, window_average
+from .events import emit
 from .model import Config, outdoor_block
 from .persistence import MANUAL_OFF_EPOCH, PersistedState
 
@@ -34,6 +35,11 @@ class AdaptiveLightManager:
         self._expect: dict[str, str] = {}
         self._own_contexts: set[str] = set()
         self._lamp_seen: dict[str, str] = {}
+        self._log_state: dict[tuple[str, str], str] = {}
+        self._decision: dict[str, str] = {}
+        self._decision_reason: dict[str, str] = {}
+        self._recheck: set[str] = set()
+        self._block_logged: set[str] = set()
         self._lamps = {entity for spec in self.cfg.zones.values() for entity in spec["lamps"]}
         self._remember_lamps()
         self._listeners: list[Callable[[], None]] = []
@@ -95,7 +101,10 @@ class AdaptiveLightManager:
                 for lamp in spec["lamps"]:
                     if lamp in self.manual_off:
                         cleared = True
+                        self._emit(zone, lamp, "manual-off", "clear", "save-recheck")
                     self.manual_off.discard(lamp)
+                    self._block_logged.discard(lamp)
+                self._recheck.add(zone)
             self._manual_clear[zone] = max(generation if isinstance(generation, int) else 0, known)
         if cleared:
             self.save()
@@ -114,11 +123,14 @@ class AdaptiveLightManager:
         """Apply the presence rule. Service data is only the lamp entity ids."""
         if zone not in self.cfg.zones:
             return "skip"
+        spec = self.cfg.zones[zone]
+        self._log_enabled(zone)
+        self._log_occupied(zone)
         if not self.enabled.get(zone, True):
+            self._log_decision(zone, "disabled", "disabled")
             self._off_since.pop(zone, None)
             self._notify()
             return "disabled"
-        spec = self.cfg.zones[zone]
         if not spec.get("night"):
             self._night_hold.discard(zone)
         rising = self._rising(zone)
@@ -129,18 +141,23 @@ class AdaptiveLightManager:
                 self.save()
         if self._night_quiet(zone, spec):
             self._off_since.pop(zone, None)
-            await self._set_lamps(spec["lamps"], "off")
+            self._log_decision(zone, "off", "night-mode")
+            await self._set_lamps(zone, spec["lamps"], "off", "night-mode")
             self._notify()
             return "night"
         level = self.estimate(zone)
         upper = float(spec.get("threshold", 50))
         lower = lower_lux(upper, float(spec.get("lux_gap") or 0))
+        self._log_estimate(zone, spec, level)
+        self._log_thresholds(zone, upper, lower)
         if upper > 0 and level is not None:
             self._note_lux(zone, level)
         average = window_average(self._lux_samples.get(zone, []), self.now()) if upper > 0 else None
         if self.occupied(zone) and upper > 0 and level is not None and average is not None and average < lower:
             self._off_since.pop(zone, None)
-            await self._set_lamps(spec["lamps"], "off")
+            self._recheck.discard(zone)
+            self._log_decision(zone, "off", "average-below-lower")
+            await self._set_lamps(zone, spec["lamps"], "off", "average-below-lower")
             self._notify()
             return "lux"
         command, since = decide(self.occupied(zone), self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
@@ -150,8 +167,18 @@ class AdaptiveLightManager:
             self._off_since.pop(zone, None)
         else:
             self._off_since[zone] = since
+        if command == "on":
+            reason = self._on_reason(zone, level, upper)
+        elif command == "off":
+            reason = "timeout"
+        elif not self.occupied(zone):
+            reason = "no-presence"
+        else:
+            reason = "lux-not-below-upper"
+        self._recheck.discard(zone)
+        self._log_decision(zone, command if command in _SERVICE else "wait", reason)
         if command in _SERVICE:
-            await self._set_lamps(spec["lamps"], command)
+            await self._set_lamps(zone, spec["lamps"], command, reason)
         self._notify()
         return command
 
@@ -206,13 +233,19 @@ class AdaptiveLightManager:
         self.save()
         return True
 
-    async def _set_lamps(self, lamps: list[str], want: str) -> None:
+    async def _set_lamps(self, zone: str, lamps: list[str], want: str, reason: str) -> None:
         need = []
         for entity in lamps:
+            current = self._lamp_state(entity)
             if self._already(entity, want):
                 continue
             if want == "on" and entity in self.manual_off:
+                if entity not in self._block_logged:
+                    self._emit(zone, entity, current, "on", "manual-off-block")
+                    self._block_logged.add(entity)
                 continue
+            self._block_logged.discard(entity)
+            self._emit(zone, entity, current, want, reason)
             need.append(entity)
         if not need:
             return
@@ -272,10 +305,15 @@ class AdaptiveLightManager:
         if caused_by_us:
             return
         before = set(self.manual_off)
+        zone = self._zone_of(entity)
         if new_state == "off" and previous == "on":
             self.manual_off.add(entity)
+            self._emit(zone, entity, "clear", "manual-off", "manual-off")
         elif new_state == "on":
+            if entity in self.manual_off:
+                self._emit(zone, entity, "manual-off", "clear", "manual-off")
             self.manual_off.discard(entity)
+            self._block_logged.discard(entity)
         self._expect.pop(entity, None)
         if self.manual_off != before:
             self.save()
@@ -293,6 +331,58 @@ class AdaptiveLightManager:
     def _already(self, entity: str, want: str) -> bool:
         state = self.hass.states.get(entity)
         return state is not None and state.state == want
+
+    def _lamp_state(self, entity: str) -> str:
+        state = self.hass.states.get(entity)
+        raw = getattr(state, "state", None) if state is not None else None
+        return raw if raw in ("on", "off") else "-"
+
+    def _zone_of(self, entity: str) -> str:
+        for zone, spec in self.cfg.zones.items():
+            if entity in spec["lamps"]:
+                return zone
+        return ""
+
+    def _emit(self, zone: str, entity: str, old, new, reason: str) -> None:
+        emit(zone, entity, old, new, reason, self.now())
+
+    def _log_value(self, zone: str, kind: str, entity: str, new: str, reason: str) -> None:
+        key = (zone, kind)
+        if key in self._log_state and self._log_state[key] == new:
+            return
+        old = self._log_state.get(key, "-")
+        self._log_state[key] = new
+        self._emit(zone, entity, old, new, reason)
+
+    def _log_enabled(self, zone: str) -> None:
+        new = "on" if self.enabled.get(zone, True) else "off"
+        self._log_value(zone, "enabled", f"switch.{zone}_enabled", new, "enabled")
+
+    def _log_occupied(self, zone: str) -> None:
+        new = "on" if self.occupied(zone) else "off"
+        self._log_value(zone, "occupied", f"binary_sensor.{zone}_occupied", new, "occupied")
+
+    def _log_estimate(self, zone: str, spec: dict, level: float | None) -> None:
+        new = "-" if level is None else f"{float(level):g}"
+        self._log_value(zone, "estimate", spec.get("lux") or "estimate", new, "estimate")
+
+    def _log_thresholds(self, zone: str, upper: float, lower: float) -> None:
+        self._log_value(zone, "thresholds", zone, f"upper={upper:g},lower={lower:g}", "thresholds")
+
+    def _log_decision(self, zone: str, new: str, reason: str) -> None:
+        if self._decision.get(zone) == new and self._decision_reason.get(zone) == reason:
+            return
+        old = self._decision.get(zone, "-")
+        self._decision[zone] = new
+        self._decision_reason[zone] = reason
+        self._emit(zone, zone, old, new, reason)
+
+    def _on_reason(self, zone: str, level: float | None, upper: float) -> str:
+        if zone in self._recheck:
+            return "save-recheck"
+        if upper > 0 and level is not None:
+            return "lux-below-upper"
+        return "presence"
 
     def cancel_timer(self, zone: str) -> None:
         cancel = self._timers.pop(zone, None)
