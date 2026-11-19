@@ -30,14 +30,6 @@
           "outdoor": "Outdoor light"
         }
       },
-      "init": {
-        "title": "Adaptive Light",
-        "description": "The zone, or a momentary action on this entry.",
-        "menu_options": {
-          "zone": "Zone",
-          "momentary": "Momentary action"
-        }
-      },
       "zone": {
         "title": "Zone",
         "description": "One zone, on its own. When someone is present and the current estimate is below the upper threshold, these lamps turn on at once while the history is shorter than 10 minutes. After that, a gap above zero turns them on when the average is from the lower threshold up to but not including the upper threshold, and turns them off when the average is below the lower threshold. An average at or above the upper threshold does not turn them on. Gap 0 has no lower band, so the average does not block turn-on. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Color and brightness are sent only when this zone sets them. Empty leaves both to Adaptive Lighting. Another zone is added as another entry.",
@@ -99,14 +91,6 @@
       "bad_factor": "Enter a radiation factor of zero or more"
     },
     "step": {
-      "init": {
-        "title": "Adaptive Light",
-        "description": "The zone, or a momentary action on this entry.",
-        "menu_options": {
-          "zone": "Zone",
-          "momentary": "Momentary action"
-        }
-      },
       "zone": {
         "title": "Zone",
         "description": "One zone, on its own. When someone is present and the current estimate is below the upper threshold, these lamps turn on at once while the history is shorter than 10 minutes. After that, a gap above zero turns them on when the average is from the lower threshold up to but not including the upper threshold, and turns them off when the average is below the lower threshold. An average at or above the upper threshold does not turn them on. Gap 0 has no lower band, so the average does not block turn-on. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Color and brightness are sent only when this zone sets them. Empty leaves both to Adaptive Lighting.",

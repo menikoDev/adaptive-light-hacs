@@ -121,10 +121,8 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
         }],
     }
     options = Options(cfg)
-    menu = sub(options, "init")
-    assert menu["type"] == "menu" and menu["menu_options"] == ["zone", "momentary"]
-    form = sub(options, "zone")
-    assert form["type"] == "form" and form["step_id"] == "zone"
+    form = sub(options, "init")
+    assert form["type"] == "form" and form["step_id"] == "zone" and "menu_options" not in form
     assert names(form) == FIELDS
     saved = sub(options, "zone", _fill(name="Hall renamed", lamps=["light.a"], presence=["binary_sensor.p", "binary_sensor.q"], timeout=10))
     assert saved["type"] == "create_entry"
@@ -189,24 +187,24 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         assert fields["off_timeout"][1].selector_type == "number"
         assert fields["night"][1].selector_type == "boolean"
 
-    menu = sub(Options(cfg), "init")
-    assert menu["type"] == "menu" and menu["menu_options"] == ["zone", "momentary"]
+    opened = sub(Options(cfg), "init")
+    assert opened["type"] == "form" and opened["step_id"] == "zone" and "menu_options" not in opened
+    assert names(opened) == FIELDS
 
     root = os.path.join(conftest.ROOT, "custom_components", "adaptive_light")
     strings = json.loads(open(os.path.join(root, "strings.json"), encoding="utf-8").read())
     en = json.loads(open(os.path.join(root, "translations", "en.json"), encoding="utf-8").read())
     ru = json.loads(open(os.path.join(root, "translations", "ru.json"), encoding="utf-8").read())
     assert strings == en
+    assert "The zone, or a momentary action on this entry." not in json.dumps(strings)
+    assert "init" not in strings["options"]["step"] and "init" not in strings["config"]["step"]
     paths = [
-        ("options", "step", "init", "description"),
-        ("options", "step", "init", "menu_options", "zone"),
-        ("options", "step", "init", "menu_options", "momentary"),
+        ("options", "step", "zone", "title"),
         ("options", "step", "zone", "data", "priority"),
         ("options", "step", "zone", "data", "color"),
         ("options", "step", "zone", "data", "brightness"),
-        ("config", "step", "init", "description"),
-        ("config", "step", "init", "menu_options", "zone"),
-        ("config", "step", "init", "menu_options", "momentary"),
+        ("config", "step", "user", "menu_options", "zone"),
+        ("config", "step", "user", "menu_options", "outdoor"),
         ("config", "step", "zone", "data", "priority"),
         ("config", "step", "zone", "data", "color"),
         ("config", "step", "zone", "data", "brightness"),
@@ -220,12 +218,12 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
             translated = translated[part]
         assert translated != english and translated
         russian[".".join(path)] = translated
-    assert russian["options.step.init.description"] == "Зона или краткое действие этой записи."
-    assert russian["options.step.init.menu_options.zone"] == "Зона"
-    assert russian["options.step.init.menu_options.momentary"] == "Краткое действие"
+    assert russian["options.step.zone.title"] == "Зона"
     assert russian["options.step.zone.data.priority"] == "Приоритет"
     assert russian["options.step.zone.data.color"] == "Цвет"
     assert russian["options.step.zone.data.brightness"] == "Яркость"
+    assert russian["config.step.user.menu_options.zone"] == "Зона"
+    assert russian["config.step.user.menu_options.outdoor"] == "Уличный свет"
 
     saved = sub(Wizard(), "zone", _fill())
     zone = saved["data"]["config"]["zones"][0]

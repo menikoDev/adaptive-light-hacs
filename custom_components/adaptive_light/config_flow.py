@@ -423,7 +423,7 @@ class AdaptiveLightConfigFlow(_Fields, config_entries.ConfigFlow, domain=DOMAIN)
 
 
 class AdaptiveLightOptionsFlow(_Fields, config_entries.OptionsFlow):
-    """Zone fields, and one momentary action, for this entry only."""
+    """The zone form for this entry. Momentary actions stay in the saved config."""
 
     _saving = True
 
@@ -452,7 +452,7 @@ class AdaptiveLightOptionsFlow(_Fields, config_entries.OptionsFlow):
         self._load()
         if isinstance(self.cfg.get("outdoor"), dict) and not self._zone:
             return await self.async_step_outdoor()
-        return self.async_show_menu(step_id="init", menu_options=["zone", "momentary"])
+        return await self.async_step_zone()
 
     async def async_step_momentary(self, user_input=None):
         self._load()
