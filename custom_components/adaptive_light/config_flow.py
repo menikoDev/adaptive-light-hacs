@@ -48,6 +48,30 @@ def _hhmm(value: Any) -> str | None:
     return f"{hour:02d}:{minute:02d}"
 
 
+def _priority_input(value: Any) -> int:
+    if value in (None, ""):
+        return 0
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    if isinstance(value, float) and not value.is_integer():
+        return 0
+    number = int(value)
+    return number if number > 0 else 0
+
+
+def _brightness_input(value: Any) -> tuple[int | None, bool]:
+    if value in (None, ""):
+        return None, False
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None, True
+    if isinstance(value, float) and not value.is_integer():
+        return None, True
+    number = int(value)
+    if number < 0 or number > 255:
+        return None, True
+    return number, False
+
+
 def _timeout(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -130,6 +154,21 @@ class _Fields:
             )),
             current.get("lux_gap", 0),
         )
+        priority, priority_sel = self._field(
+            "priority",
+            sel.NumberSelector(sel.NumberSelectorConfig(
+                min=0, max=1000, step=1, mode=sel.NumberSelectorMode.BOX,
+            )),
+            current.get("priority", 0),
+        )
+        color, color_sel = self._optional("color", sel.TextSelector(), current.get("color") or None)
+        brightness, brightness_sel = self._optional(
+            "brightness",
+            sel.NumberSelector(sel.NumberSelectorConfig(
+                min=0, max=255, step=1, mode=sel.NumberSelectorMode.BOX,
+            )),
+            current.get("brightness"),
+        )
         timeout, timeout_sel = self._field(
             "off_timeout",
             sel.NumberSelector(sel.NumberSelectorConfig(
@@ -147,6 +186,7 @@ class _Fields:
         )
         return vol.Schema({
             name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, gap: gap_sel,
+            priority: priority_sel, color: color_sel, brightness: brightness_sel,
             timeout: timeout_sel, night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
 
@@ -187,6 +227,11 @@ class _Fields:
             gap = _timeout(user_input.get("lux_gap"))
             if gap is None:
                 errors["lux_gap"] = "bad_gap"
+        priority = _priority_input(user_input.get("priority") if "priority" in user_input else None)
+        color = str(user_input.get("color") or "").strip()
+        brightness, brightness_bad = _brightness_input(user_input.get("brightness") if "brightness" in user_input else None)
+        if brightness_bad:
+            errors["brightness"] = "bad_brightness"
         night = user_input.get("night") is True
         start = _hhmm(user_input.get("night_start")) or "02:00"
         end = _hhmm(user_input.get("night_end")) or "06:00"
@@ -203,7 +248,8 @@ class _Fields:
                 coefficient = zone["lux_coefficient"]
         return {
             "name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout,
-            "lux": lux, "threshold": threshold, "lux_gap": gap, "lux_coefficient": coefficient,
+            "lux": lux, "threshold": threshold, "lux_gap": gap, "priority": priority,
+            "color": color, "brightness": brightness, "lux_coefficient": coefficient,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
         }, {}
 

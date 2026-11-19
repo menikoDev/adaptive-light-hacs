@@ -35,4 +35,5 @@ class ZoneEnabled(AdaptiveEntity, SwitchEntity):
         self.mgr.enabled[self._zone] = False
         self.mgr.cancel_timer(self._zone)
         self.mgr.save()
+        await self.mgr.apply(self._zone)
         self.mgr._notify()

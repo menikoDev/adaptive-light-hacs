@@ -24,6 +24,32 @@ class ConfigError(ValueError):
         self.code, self.detail = code, detail
 
 
+def _priority(value: Any) -> int:
+    """Missing, empty, and negative priorities are 0. Higher numbers win."""
+    if value in (None, ""):
+        return 0
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    if isinstance(value, float) and not value.is_integer():
+        return 0
+    number = int(value)
+    return number if number > 0 else 0
+
+
+def _brightness(value: Any) -> int | None:
+    """Unset when the zone does not choose a brightness. Otherwise 0–255."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None
+    number = int(value)
+    if number < 0 or number > 255:
+        return None
+    return number
+
+
 def _timeout(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -104,12 +130,17 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     gap = _timeout(raw.get("lux_gap"))
     if gap is None:
         gap = 0
+    priority = _priority(raw.get("priority"))
+    color = raw.get("color") if isinstance(raw.get("color"), str) else ""
+    brightness = _brightness(raw.get("brightness"))
     generation = raw.get("manual_clear")
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
         generation = 0
     return {
         "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
-        "lux": lux, "threshold": threshold, "lux_gap": gap, "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
+        "lux": lux, "threshold": threshold, "lux_gap": gap, "priority": priority,
+        "color": color.strip(), "brightness": brightness,
+        "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
         "manual_clear": generation,
         "night": raw.get("night") is True,
         "night_start": _clock(raw.get("night_start"), "02:00"),

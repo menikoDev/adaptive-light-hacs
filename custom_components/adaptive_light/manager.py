@@ -40,6 +40,9 @@ class AdaptiveLightManager:
         self._decision_reason: dict[str, str] = {}
         self._recheck: set[str] = set()
         self._block_logged: set[str] = set()
+        self._lux_hold: set[str] = set()
+        self._apply_stack: set[str] = set()
+        self._again: set[str] = set()
         self._lamps = {entity for spec in self.cfg.zones.values() for entity in spec["lamps"]}
         self._remember_lamps()
         self._listeners: list[Callable[[], None]] = []
@@ -104,6 +107,7 @@ class AdaptiveLightManager:
                         self._emit(zone, lamp, "manual-off", "clear", "save-recheck")
                     self.manual_off.discard(lamp)
                     self._block_logged.discard(lamp)
+                    self._share_manual(lamp, False)
                 self._recheck.add(zone)
             self._manual_clear[zone] = max(generation if isinstance(generation, int) else 0, known)
         if cleared:
@@ -120,12 +124,36 @@ class AdaptiveLightManager:
         ).to_dict()
 
     async def apply(self, zone: str) -> str:
-        """Apply the presence rule. Service data is only the lamp entity ids."""
+        """Apply one zone, then the zone that just became owner of a shared lamp."""
+        if zone in self._apply_stack:
+            self._again.add(zone)
+            return "reenter"
+        self._apply_stack.add(zone)
+        try:
+            result = await self._apply_zone(zone)
+            if zone in self.cfg.zones:
+                await self._handoff(zone)
+            while self._again:
+                nxt = self._again.pop()
+                if nxt in self._apply_stack:
+                    continue
+                self._apply_stack.add(nxt)
+                await self._apply_zone(nxt)
+                if nxt in self.cfg.zones:
+                    await self._handoff(nxt)
+            return result
+        finally:
+            self._apply_stack.clear()
+            self._again.clear()
+
+    async def _apply_zone(self, zone: str) -> str:
+        """Apply the presence rule. Only the owner calls the light service."""
         if zone not in self.cfg.zones:
             return "skip"
         spec = self.cfg.zones[zone]
         self._log_enabled(zone)
         self._log_occupied(zone)
+        self._lux_hold.discard(zone)
         if not self.enabled.get(zone, True):
             self._log_decision(zone, "disabled", "disabled")
             self._off_since.pop(zone, None)
@@ -156,6 +184,7 @@ class AdaptiveLightManager:
         average = window_average(self._lux_samples.get(zone, []), self.now()) if upper > 0 else None
         window_full = average is not None
         if gap > 0 and window_full and self.occupied(zone) and upper > 0 and level is not None and average < lower:
+            self._lux_hold.add(zone)
             self._off_since.pop(zone, None)
             self._recheck.discard(zone)
             self._log_decision(zone, "off", "average-below-lower")
@@ -183,6 +212,102 @@ class AdaptiveLightManager:
             await self._set_lamps(zone, spec["lamps"], command, reason)
         self._notify()
         return command
+
+    def _bus(self) -> dict:
+        bus = getattr(self.hass, "_adaptive_light_bus", None)
+        if not isinstance(bus, dict):
+            bus = {"contexts": set(), "owners": {}}
+            setattr(self.hass, "_adaptive_light_bus", bus)
+        return bus
+
+    def _peers(self) -> list["AdaptiveLightManager"]:
+        peers: list[AdaptiveLightManager] = []
+        data = getattr(self.hass, "data", None)
+        if isinstance(data, dict):
+            bucket = data.get(DOMAIN)
+            if isinstance(bucket, dict):
+                for mgr in bucket.values():
+                    if isinstance(mgr, AdaptiveLightManager):
+                        peers.append(mgr)
+        if all(mgr is not self for mgr in peers):
+            peers.append(self)
+        return peers
+
+    def _share_manual(self, entity: str, blocked: bool) -> None:
+        for mgr in self._peers():
+            if entity not in mgr._lamps:
+                continue
+            before = entity in mgr.manual_off
+            if blocked:
+                mgr.manual_off.add(entity)
+            else:
+                mgr.manual_off.discard(entity)
+                mgr._block_logged.discard(entity)
+            if mgr is not self and before != (entity in mgr.manual_off):
+                mgr.save()
+
+    def _manual_blocked(self, entity: str) -> bool:
+        return any(entity in mgr.manual_off for mgr in self._peers() if entity in mgr._lamps or mgr is self)
+
+    def _timeout_pending(self, zone: str) -> bool:
+        since = self._off_since.get(zone)
+        if since is None or zone not in self.cfg.zones:
+            return False
+        return self.now() - since < float(self.cfg.zones[zone]["off_timeout"])
+
+    def is_active(self, zone: str) -> bool:
+        """Enabled, and presence, a running off timeout, night hold, or a lux hold while someone remains."""
+        if zone not in self.cfg.zones or not self.enabled.get(zone, True):
+            return False
+        return (
+            self.occupied(zone)
+            or zone in self._night_hold
+            or self._timeout_pending(zone)
+            or zone in self._lux_hold
+        )
+
+    def _owner_of(self, lamp: str):
+        rows = []
+        for mgr in self._peers():
+            for zone, spec in mgr.cfg.zones.items():
+                if lamp not in spec["lamps"] or not mgr.enabled.get(zone, True):
+                    continue
+                rows.append((int(spec.get("priority") or 0), zone, mgr, mgr.is_active(zone)))
+        if not rows:
+            return None
+        active = [row for row in rows if row[3]]
+        pool = active or rows
+        pool.sort(key=lambda row: (-row[0], row[1]))
+        _rank, zone, mgr, _active = pool[0]
+        return mgr, zone
+
+    def _owns(self, zone: str, lamp: str) -> bool:
+        found = self._owner_of(lamp)
+        return found is not None and found[0] is self and found[1] == zone
+
+    async def _handoff(self, zone: str) -> None:
+        spec = self.cfg.zones.get(zone)
+        if spec is None:
+            return
+        owners = self._bus()["owners"]
+        for lamp in spec["lamps"]:
+            found = self._owner_of(lamp)
+            ident = None if found is None else (id(found[0]), found[1])
+            seen = lamp in owners
+            prev = owners.get(lamp)
+            if seen and prev == ident:
+                continue
+            owners[lamp] = ident
+            old = prev[1] if isinstance(prev, tuple) else "-"
+            new = ident[1] if ident is not None else "-"
+            if old != new:
+                self._emit(new if new != "-" else old, lamp, old, new, "owner")
+            if found is None or (found[0] is self and found[1] == zone):
+                continue
+            if found[0] is self:
+                self._again.add(found[1])
+            else:
+                await found[0].apply(found[1])
 
     def _rising(self, zone: str) -> bool:
         edge = False
@@ -236,12 +361,15 @@ class AdaptiveLightManager:
         return True
 
     async def _set_lamps(self, zone: str, lamps: list[str], want: str, reason: str) -> None:
+        spec = self.cfg.zones.get(zone) or {}
         need = []
         for entity in lamps:
+            if not self._owns(zone, entity):
+                continue
             current = self._lamp_state(entity)
             if self._already(entity, want):
                 continue
-            if want == "on" and entity in self.manual_off:
+            if want == "on" and self._manual_blocked(entity):
                 if entity not in self._block_logged:
                     self._emit(zone, entity, current, "on", "manual-off-block")
                     self._block_logged.add(entity)
@@ -252,10 +380,20 @@ class AdaptiveLightManager:
         if not need:
             return
         for entity in need:
-            self._expect[entity] = want
+            for mgr in self._peers():
+                if entity in mgr._lamps:
+                    mgr._expect[entity] = want
         context = self._own_context()
         kwargs = {"context": context} if context is not None else {}
-        await self.hass.services.async_call("light", _SERVICE[want], {"entity_id": need}, **kwargs)
+        data: dict[str, Any] = {"entity_id": need}
+        if want == "on":
+            color = str(spec.get("color") or "").strip()
+            if color:
+                data["color_name"] = color
+            bright = spec.get("brightness")
+            if isinstance(bright, int) and not isinstance(bright, bool):
+                data["brightness"] = bright
+        await self.hass.services.async_call("light", _SERVICE[want], data, **kwargs)
 
     def _own_context(self):
         try:
@@ -264,6 +402,7 @@ class AdaptiveLightManager:
             return None
         context = Context()
         self._own_contexts.add(context.id)
+        self._bus()["contexts"].add(context.id)
         return context
 
     def _note_lux(self, zone: str, level: float) -> None:
@@ -300,21 +439,24 @@ class AdaptiveLightManager:
             return
         previous = self._lamp_seen.get(entity)
         self._lamp_seen[entity] = new_state
+        matched = any(mgr._expect.get(entity) == new_state for mgr in self._peers())
         if caused_by_us is None:
-            caused_by_us = self._expect.get(entity) == new_state
-        if self._expect.get(entity) == new_state:
-            self._expect.pop(entity, None)
+            caused_by_us = matched
+        if matched:
+            for mgr in self._peers():
+                if mgr._expect.get(entity) == new_state:
+                    mgr._expect.pop(entity, None)
         if caused_by_us:
             return
         before = set(self.manual_off)
         zone = self._zone_of(entity)
         if new_state == "off" and previous == "on":
-            self.manual_off.add(entity)
+            self._share_manual(entity, True)
             self._emit(zone, entity, "clear", "manual-off", "manual-off")
         elif new_state == "on":
-            if entity in self.manual_off:
+            if self._manual_blocked(entity):
                 self._emit(zone, entity, "manual-off", "clear", "manual-off")
-            self.manual_off.discard(entity)
+            self._share_manual(entity, False)
             self._block_logged.discard(entity)
         self._expect.pop(entity, None)
         if self.manual_off != before:
@@ -326,7 +468,8 @@ class AdaptiveLightManager:
             return None
         cid = getattr(ctx, "id", None)
         parent = getattr(ctx, "parent_id", None)
-        if cid in self._own_contexts or (parent and parent in self._own_contexts):
+        shared = self._bus()["contexts"]
+        if cid in self._own_contexts or cid in shared or (parent and (parent in self._own_contexts or parent in shared)):
             return True
         return None
 

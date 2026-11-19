@@ -24,8 +24,8 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-FIELDS = ["name", "lamps", "presence", "lux", "threshold", "lux_gap", "off_timeout", "night", "night_start", "night_end", "night_still"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "lux_gap", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
+FIELDS = ["name", "lamps", "presence", "lux", "threshold", "lux_gap", "priority", "color", "brightness", "off_timeout", "night", "night_start", "night_end", "night_still"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "lux_gap", "priority", "color", "brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
 def run(coro):
