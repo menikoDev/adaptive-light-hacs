@@ -1,11 +1,13 @@
 """Each zone is its own entry. The four fields are the only window."""
 import asyncio
 import importlib.util
+import json
 import os
 import sys
 import types
 
 import pytest
+import voluptuous as vol
 
 pytest.importorskip("homeassistant")
 
@@ -158,6 +160,85 @@ class _Services:
 
     async def async_call(self, domain, service, data, **kwargs):
         self.calls.append((domain, service, dict(data)))
+
+
+def _schema_fields(result):
+    return {str(key): (key, selector) for key, selector in result["data_schema"].schema.items()}
+
+
+def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_labels():
+    cfg = {
+        "version": 5,
+        "zones": [{
+            "key": "hall", "name": "Hall", "lamps": ["light.a"],
+            "presence": ["binary_sensor.p"], "off_timeout": 45,
+        }],
+    }
+    create = _schema_fields(sub(Wizard(), "zone"))
+    options = _schema_fields(sub(Options(cfg), "zone"))
+    for fields in (create, options):
+        color_key, color_sel = fields["color"]
+        bright_key, bright_sel = fields["brightness"]
+        assert type(color_key) is vol.Optional and type(bright_key) is vol.Optional
+        assert color_sel.selector_type == "color_rgb"
+        assert bright_sel.selector_type == "number" and bright_sel.config["mode"] == "slider"
+        assert not (color_key.description or {}).get("suggested_value")
+        assert (bright_key.description or {}).get("suggested_value") in (None, "")
+        assert type(fields["priority"][0]) is vol.Required
+        assert fields["lux_gap"][1].selector_type == "number"
+        assert fields["off_timeout"][1].selector_type == "number"
+        assert fields["night"][1].selector_type == "boolean"
+
+    menu = sub(Options(cfg), "init")
+    assert menu["type"] == "menu" and menu["menu_options"] == ["zone", "momentary"]
+
+    root = os.path.join(conftest.ROOT, "custom_components", "adaptive_light")
+    strings = json.loads(open(os.path.join(root, "strings.json"), encoding="utf-8").read())
+    en = json.loads(open(os.path.join(root, "translations", "en.json"), encoding="utf-8").read())
+    ru = json.loads(open(os.path.join(root, "translations", "ru.json"), encoding="utf-8").read())
+    assert strings == en
+    paths = [
+        ("options", "step", "init", "description"),
+        ("options", "step", "init", "menu_options", "zone"),
+        ("options", "step", "init", "menu_options", "momentary"),
+        ("options", "step", "zone", "data", "priority"),
+        ("options", "step", "zone", "data", "color"),
+        ("options", "step", "zone", "data", "brightness"),
+        ("config", "step", "init", "description"),
+        ("config", "step", "init", "menu_options", "zone"),
+        ("config", "step", "init", "menu_options", "momentary"),
+        ("config", "step", "zone", "data", "priority"),
+        ("config", "step", "zone", "data", "color"),
+        ("config", "step", "zone", "data", "brightness"),
+    ]
+    russian = {}
+    for path in paths:
+        english = en["config" if path[0] == "config" else "options"]
+        translated = ru["config" if path[0] == "config" else "options"]
+        for part in path[1:]:
+            english = english[part]
+            translated = translated[part]
+        assert translated != english and translated
+        russian[".".join(path)] = translated
+    assert russian["options.step.init.description"] == "Зона или краткое действие этой записи."
+    assert russian["options.step.init.menu_options.zone"] == "Зона"
+    assert russian["options.step.init.menu_options.momentary"] == "Краткое действие"
+    assert russian["options.step.zone.data.priority"] == "Приоритет"
+    assert russian["options.step.zone.data.color"] == "Цвет"
+    assert russian["options.step.zone.data.brightness"] == "Яркость"
+
+    saved = sub(Wizard(), "zone", _fill())
+    zone = saved["data"]["config"]["zones"][0]
+    assert zone["color"] == "" and zone["brightness"] is None
+    picked = sub(Wizard(), "zone", {**_fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"]), "color": [9, 8, 7], "brightness": 40})
+    chosen = picked["data"]["config"]["zones"][0]
+    assert chosen["color"] == [9, 8, 7] and chosen["brightness"] == 40
+    home = types.SimpleNamespace(states=_States(), services=_Services())
+    home.states.set("binary_sensor.k", "on")
+    home.states.set("light.k", "off")
+    mgr = AdaptiveLightManager(home, picked["data"]["config"])
+    assert run(mgr.apply(chosen["key"])) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.k"], "rgb_color": [9, 8, 7], "brightness": 40})]
 
 
 def test_the_flow_saves_the_four_fields_and_a_yaml_zone_still_loads():

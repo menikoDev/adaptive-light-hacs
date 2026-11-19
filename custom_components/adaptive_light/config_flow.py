@@ -59,6 +59,34 @@ def _priority_input(value: Any) -> int:
     return number if number > 0 else 0
 
 
+def _rgb_value(value: Any) -> list[int] | None:
+    """Only an RGB triple can prefill the color picker. A name is not a default color."""
+    if isinstance(value, (list, tuple)) and _color_input(value):
+        return [int(part) for part in value]
+    return None
+
+
+def _color_input(value: Any) -> str | list[int] | None:
+    """Empty stays empty. A picker value is red, green, blue. A stored name is kept only if submitted."""
+    if value in (None, "", []):
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple)) and len(value) == 3 and not any(isinstance(part, bool) for part in value):
+        rgb: list[int] = []
+        for part in value:
+            if isinstance(part, bool) or not isinstance(part, (int, float)):
+                return None
+            if isinstance(part, float) and not part.is_integer():
+                return None
+            number = int(part)
+            if number < 0 or number > 255:
+                return None
+            rgb.append(number)
+        return rgb
+    return None
+
+
 def _brightness_input(value: Any) -> tuple[int | None, bool]:
     if value in (None, ""):
         return None, False
@@ -161,11 +189,11 @@ class _Fields:
             )),
             current.get("priority", 0),
         )
-        color, color_sel = self._optional("color", sel.TextSelector(), current.get("color") or None)
+        color, color_sel = self._optional("color", sel.ColorRGBSelector(), _rgb_value(current.get("color")))
         brightness, brightness_sel = self._optional(
             "brightness",
             sel.NumberSelector(sel.NumberSelectorConfig(
-                min=0, max=255, step=1, mode=sel.NumberSelectorMode.BOX,
+                min=0, max=255, step=1, mode=sel.NumberSelectorMode.SLIDER,
             )),
             current.get("brightness"),
         )
@@ -228,7 +256,9 @@ class _Fields:
             if gap is None:
                 errors["lux_gap"] = "bad_gap"
         priority = _priority_input(user_input.get("priority") if "priority" in user_input else None)
-        color = str(user_input.get("color") or "").strip()
+        color = _color_input(user_input.get("color") if "color" in user_input else None)
+        if color is None:
+            errors["color"] = "bad_color"
         brightness, brightness_bad = _brightness_input(user_input.get("brightness") if "brightness" in user_input else None)
         if brightness_bad:
             errors["brightness"] = "bad_brightness"

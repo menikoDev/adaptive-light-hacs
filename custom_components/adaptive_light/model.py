@@ -36,6 +36,25 @@ def _priority(value: Any) -> int:
     return number if number > 0 else 0
 
 
+def _color(value: Any) -> str | list[int]:
+    """Empty when the zone does not choose a color. A name or an RGB triple otherwise."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple)) and len(value) == 3 and not any(isinstance(part, bool) for part in value):
+        rgb: list[int] = []
+        for part in value:
+            if isinstance(part, bool) or not isinstance(part, (int, float)):
+                return ""
+            if isinstance(part, float) and not part.is_integer():
+                return ""
+            number = int(part)
+            if number < 0 or number > 255:
+                return ""
+            rgb.append(number)
+        return rgb
+    return ""
+
+
 def _brightness(value: Any) -> int | None:
     """Unset when the zone does not choose a brightness. Otherwise 0–255."""
     if value in (None, ""):
@@ -131,7 +150,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     if gap is None:
         gap = 0
     priority = _priority(raw.get("priority"))
-    color = raw.get("color") if isinstance(raw.get("color"), str) else ""
+    color = _color(raw.get("color"))
     brightness = _brightness(raw.get("brightness"))
     generation = raw.get("manual_clear")
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
@@ -139,7 +158,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     return {
         "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
         "lux": lux, "threshold": threshold, "lux_gap": gap, "priority": priority,
-        "color": color.strip(), "brightness": brightness,
+        "color": color, "brightness": brightness,
         "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
         "manual_clear": generation,
         "night": raw.get("night") is True,

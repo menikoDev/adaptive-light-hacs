@@ -387,9 +387,7 @@ class AdaptiveLightManager:
         kwargs = {"context": context} if context is not None else {}
         data: dict[str, Any] = {"entity_id": need}
         if want == "on":
-            color = str(spec.get("color") or "").strip()
-            if color:
-                data["color_name"] = color
+            data.update(_color_data(spec.get("color")))
             bright = spec.get("brightness")
             if isinstance(bright, int) and not isinstance(bright, bool):
                 data["brightness"] = bright
@@ -619,6 +617,19 @@ class AdaptiveLightManager:
     async def async_flush(self) -> None:
         if self.store is not None:
             await self.store.async_save(self._snapshot())
+
+
+def _color_data(color: Any) -> dict[str, Any]:
+    """Service fields for a chosen color. Empty sends nothing, so Adaptive Lighting keeps the lamp."""
+    if isinstance(color, str) and color.strip():
+        return {"color_name": color.strip()}
+    if (
+        isinstance(color, list)
+        and len(color) == 3
+        and all(isinstance(part, int) and not isinstance(part, bool) and 0 <= part <= 255 for part in color)
+    ):
+        return {"rgb_color": list(color)}
+    return {}
 
 
 def _reading(hass, entity: str) -> float | None:
