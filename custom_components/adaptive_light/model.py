@@ -123,6 +123,13 @@ def _timeout(value: Any) -> int | None:
     return number
 
 
+def _open_clock(value: Any) -> str:
+    """A clock the user left empty. Empty and invalid both mean no limit."""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    return _clock(value, "")
+
+
 def _clock(value: Any, default: str) -> str:
     if not isinstance(value, str):
         return default
@@ -210,6 +217,8 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
         "night_start": _clock(raw.get("night_start"), "02:00"),
         "night_end": _clock(raw.get("night_end"), "06:00"),
         "night_still": _still(raw.get("night_still")),
+        "active_start": _open_clock(raw.get("active_start")),
+        "active_end": _open_clock(raw.get("active_end")),
     }
 
 

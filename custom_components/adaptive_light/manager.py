@@ -161,6 +161,12 @@ class AdaptiveLightManager:
             self._off_since.pop(zone, None)
             self._notify()
             return "disabled"
+        if not self._in_active_hours(spec):
+            # Outside its hours the zone does not turn lamps on. Ownership is refused
+            # in _owner_of, so a shared lamp goes to a zone that is inside its hours.
+            self._log_decision(zone, "wait", "outside-hours")
+            self._notify()
+            return "wait"
         if not spec.get("night"):
             self._night_hold.discard(zone)
         rising = self._rising(zone)
@@ -278,9 +284,20 @@ class AdaptiveLightManager:
             return False
         return self.now() - since < float(self.cfg.zones[zone]["off_timeout"])
 
+    def _in_active_hours(self, spec: dict) -> bool:
+        """Empty or equal times mean the zone is always active. Night mode is a different window."""
+        start = spec.get("active_start") or ""
+        end = spec.get("active_end") or ""
+        if not start or not end or start == end:
+            return True
+        hour, minute = self._clock()
+        return in_night_window(hour, minute, start, end)
+
     def is_active(self, zone: str) -> bool:
-        """Enabled, and presence, a running off timeout, night hold, or a lux hold while someone remains."""
+        """Enabled, inside its hours, and presence, a running off timeout, night hold, or a lux hold."""
         if zone not in self.cfg.zones or not self.enabled.get(zone, True):
+            return False
+        if not self._in_active_hours(self.cfg.zones[zone]):
             return False
         return (
             self.occupied(zone)
@@ -294,6 +311,8 @@ class AdaptiveLightManager:
         for mgr in self._peers():
             for zone, spec in mgr.cfg.zones.items():
                 if lamp not in spec["lamps"] or not mgr.enabled.get(zone, True):
+                    continue
+                if not mgr._in_active_hours(spec):
                     continue
                 rows.append((int(spec.get("priority") or 0), zone, mgr, mgr.is_active(zone)))
         if not rows:

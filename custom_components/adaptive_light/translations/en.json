@@ -33,7 +33,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Type red, green, and blue from 0 to 255. An empty box is 0 when another box is filled. Hold color sends that RGB, or kelvin when all three boxes are empty, and tells Adaptive Lighting not to change the color. Hold brightness does the same for brightness. An unchecked box is not sent and is left to Adaptive Lighting. Empty red, green, blue, and kelvin with Hold color checked still does not call Adaptive Lighting. While the zone keeps the lamp on, a held value is sent again if the lamp changes. Another zone is added as another entry.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Outside the active hours the zone does not turn lamps on and does not take shared lamps. Empty or equal active hours mean always. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns. Another zone is added as another entry.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -53,7 +53,54 @@
           "night": "Night mode",
           "night_start": "Night from",
           "night_end": "Night until",
-          "night_still": "Still, min"
+          "night_still": "Still, min",
+          "active_start": "From",
+          "active_end": "Until"
+        },
+        "sections": {
+          "rgb": {
+            "name": "RGB",
+            "description": "Red, green, and blue, each from 0 to 255.",
+            "data": {
+              "color_r": "Red",
+              "color_g": "Green",
+              "color_b": "Blue"
+            }
+          },
+          "color_temperature": {
+            "name": "Color temperature",
+            "description": "Kelvin, and whether this zone holds the color.",
+            "data": {
+              "color_temp": "Color temperature, K",
+              "hold_color": "Hold color"
+            }
+          },
+          "brightness_level": {
+            "name": "Brightness",
+            "description": "Level from 0 to 255, and whether this zone holds it.",
+            "data": {
+              "brightness": "Brightness",
+              "hold_brightness": "Hold brightness"
+            }
+          },
+          "active_hours": {
+            "name": "Active hours",
+            "description": "Turns lamps on and takes shared lamps only between these times. Empty or equal times mean always.",
+            "data": {
+              "active_start": "From",
+              "active_end": "Until"
+            }
+          },
+          "night_mode": {
+            "name": "Night mode",
+            "description": "Inside this window, lamps turn off after the still period with no movement and turn on again when movement returns.",
+            "data": {
+              "night": "Night mode",
+              "night_start": "Night from",
+              "night_end": "Night until",
+              "night_still": "Still, min"
+            }
+          }
         }
       },
       "outdoor": {
@@ -100,7 +147,7 @@
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Type red, green, and blue from 0 to 255. An empty box is 0 when another box is filled. Hold color sends that RGB, or kelvin when all three boxes are empty, and tells Adaptive Lighting not to change the color. Hold brightness does the same for brightness. An unchecked box is not sent and is left to Adaptive Lighting. Empty red, green, blue, and kelvin with Hold color checked still does not call Adaptive Lighting. While the zone keeps the lamp on, a held value is sent again if the lamp changes.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Outside the active hours the zone does not turn lamps on and does not take shared lamps. Empty or equal active hours mean always. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -120,7 +167,54 @@
           "night": "Night mode",
           "night_start": "Night from",
           "night_end": "Night until",
-          "night_still": "Still, min"
+          "night_still": "Still, min",
+          "active_start": "From",
+          "active_end": "Until"
+        },
+        "sections": {
+          "rgb": {
+            "name": "RGB",
+            "description": "Red, green, and blue, each from 0 to 255.",
+            "data": {
+              "color_r": "Red",
+              "color_g": "Green",
+              "color_b": "Blue"
+            }
+          },
+          "color_temperature": {
+            "name": "Color temperature",
+            "description": "Kelvin, and whether this zone holds the color.",
+            "data": {
+              "color_temp": "Color temperature, K",
+              "hold_color": "Hold color"
+            }
+          },
+          "brightness_level": {
+            "name": "Brightness",
+            "description": "Level from 0 to 255, and whether this zone holds it.",
+            "data": {
+              "brightness": "Brightness",
+              "hold_brightness": "Hold brightness"
+            }
+          },
+          "active_hours": {
+            "name": "Active hours",
+            "description": "Turns lamps on and takes shared lamps only between these times. Empty or equal times mean always.",
+            "data": {
+              "active_start": "From",
+              "active_end": "Until"
+            }
+          },
+          "night_mode": {
+            "name": "Night mode",
+            "description": "Inside this window, lamps turn off after the still period with no movement and turn on again when movement returns.",
+            "data": {
+              "night": "Night mode",
+              "night_start": "Night from",
+              "night_end": "Night until",
+              "night_still": "Still, min"
+            }
+          }
         }
       },
       "outdoor": {

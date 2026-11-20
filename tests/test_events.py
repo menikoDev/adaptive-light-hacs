@@ -288,3 +288,113 @@ def test_hold_color_with_rgb_green_turns_the_lamp_green():
     assert turned
     assert all(call[2].get("rgb_color") == [0, 255, 0] for call in turned)
     assert all("color_temp_kelvin" not in call[2] for call in turned)
+
+
+def test_outside_the_active_window_an_occupied_zone_does_not_turn_the_lamp_on():
+    """Presence is on, but 20:15 is outside 09:00–17:00, so the lamp stays off.
+
+    Equal or empty hours stay always active. A higher zone outside its hours
+    does not take a shared lamp from a zone that is inside its hours.
+    """
+    from datetime import datetime
+
+    def at(hour, minute):
+        return lambda: datetime(2026, 11, 20, hour, minute)
+
+    def one(hour, minute, **extra):
+        home = Home()
+        home.states.set("binary_sensor.p", "on")
+        home.states.set("light.desk", "off")
+        zone = {
+            "key": "desk",
+            "name": "Desk",
+            "lamps": ["light.desk"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "active_start": "09:00",
+            "active_end": "17:00",
+        }
+        zone.update(extra)
+        mgr = AdaptiveLightManager(home, {"version": 5, "zones": [zone]}, now=home.now, local_now=at(hour, minute))
+        return home, run(mgr.apply("desk"))
+
+    home, result = one(20, 15)
+    assert result == "wait"
+    assert home.services.calls == []
+
+    home, result = one(12, 0)
+    assert result == "on"
+    assert ("light", "turn_on", {"entity_id": ["light.desk"]}) in home.services.calls
+
+    home, result = one(20, 15, active_start="09:00", active_end="09:00")
+    assert result == "on"
+    home, result = one(20, 15, active_start="", active_end="")
+    assert result == "on"
+
+    home = Home()
+    lamp = "light.living_room_top_lamp_top_left"
+    home.states.set("binary_sensor.room", "on")
+    home.states.set("binary_sensor.table", "on")
+    home.states.set(lamp, "off")
+    mgr = AdaptiveLightManager(home, {"version": 5, "zones": [
+        {
+            "key": "living_room_zone",
+            "name": "Living Room",
+            "lamps": [lamp],
+            "presence": ["binary_sensor.room"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "priority": 0,
+        },
+        {
+            "key": "light_beem_for_work_station",
+            "name": "Light Beem For Work Station",
+            "lamps": [lamp],
+            "presence": ["binary_sensor.table"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "priority": 1,
+            "color": [0, 0, 255],
+            "hold_color": True,
+            "active_start": "09:00",
+            "active_end": "17:00",
+        },
+    ]}, now=home.now, local_now=at(20, 15))
+    assert run(mgr.apply("light_beem_for_work_station")) == "wait"
+    assert mgr._owner_of(lamp)[1] == "living_room_zone"
+    assert all(call[2].get("rgb_color") != [0, 0, 255] for call in home.services.calls)
+
+
+def test_zone_form_groups_are_labeled_in_english_and_russian():
+    import json
+    import os
+
+    root = os.path.join(os.path.dirname(__file__), "..", "custom_components", "adaptive_light")
+    en = json.load(open(os.path.join(root, "translations", "en.json"), encoding="utf-8"))
+    ru = json.load(open(os.path.join(root, "translations", "ru.json"), encoding="utf-8"))
+    strings = json.load(open(os.path.join(root, "strings.json"), encoding="utf-8"))
+    assert strings == en
+    expected = {
+        "rgb": "RGB",
+        "color_temperature": "Color temperature",
+        "brightness_level": "Brightness",
+        "active_hours": "Active hours",
+        "night_mode": "Night mode",
+    }
+    russian = {
+        "rgb": "Цвет RGB",
+        "color_temperature": "Цветовая температура",
+        "brightness_level": "Яркость",
+        "active_hours": "Активные часы",
+        "night_mode": "Ночной режим",
+    }
+    for flow in ("config", "options"):
+        sections = en[flow]["step"]["zone"]["sections"]
+        translated = ru[flow]["step"]["zone"]["sections"]
+        for key, label in expected.items():
+            assert sections[key]["name"] == label
+            assert sections[key]["description"]
+            assert translated[key]["name"] == russian[key]
+            assert translated[key]["description"]
+            assert translated[key]["name"] != key or key == "rgb"
