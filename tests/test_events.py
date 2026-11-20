@@ -591,14 +591,69 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
         assert translated["active_hours"]["data"]["active_hours"] == "Использовать эти часы"
         assert "active_windows" not in sections["active_hours"]["data"]
         assert "active_start" not in sections["active_hours"]["data"]
-        for number in (1, 2):
+        data = en[flow]["step"]["zone"]["data"]
+        russian_data = ru[flow]["step"]["zone"]["data"]
+        assert data["color"] == "Color" and russian_data["color"] == "Цвет"
+        assert data["brightness_level"] == "Brightness" and russian_data["brightness_level"] == "Яркость"
+        assert data["night_mode"] == "Night mode" and russian_data["night_mode"] == "Ночной режим"
+        assert data["color"] != "color" and russian_data["night_mode"] != "night_mode"
+        for number in range(1, 9):
             assert sections[f"group_{number}"]["name"] == f"Group {number}"
             assert translated[f"group_{number}"]["name"] == f"Группа {number}"
-            assert sections[f"group_{number}"]["data"][f"group_{number}_from"] == "From"
-            assert sections[f"group_{number}"]["data"][f"group_{number}_to"] == "To"
-            assert translated[f"group_{number}"]["data"][f"group_{number}_from"] == "С"
-            assert translated[f"group_{number}"]["data"][f"group_{number}_to"] == "До"
+            assert data[f"group_{number}"] == f"Group {number}"
+            assert russian_data[f"group_{number}"] == f"Группа {number}"
+            assert data[f"group_{number}"] != f"group_{number}"
+            for side, english, russian_label in (("from", "From", "С"), ("to", "To", "До")):
+                field = f"group_{number}_{side}"
+                assert sections[f"group_{number}"]["data"][field] == english
+                assert translated[f"group_{number}"]["data"][field] == russian_label
+                assert data[field] == english and russian_data[field] == russian_label
+                assert data[field] != field and russian_data[field] != field
             assert sections[f"group_{number}"]["description"] != translated[f"group_{number}"]["description"]
+        assert en[flow]["error"]["duplicate_key"] == "This zone key is already used"
+        assert ru[flow]["error"]["duplicate_key"] == "Зона с таким ключом уже есть"
         assert sections["active_hours"]["data_description"]["active_hours"]
         assert translated["active_hours"]["data_description"]["active_hours"]
         assert sections["active_hours"]["data_description"]["active_hours"] != translated["active_hours"]["data_description"]["active_hours"]
+
+    def keys(obj, prefix=""):
+        found = set()
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                path = f"{prefix}.{key}" if prefix else key
+                found.add(path)
+                found |= keys(value, path)
+        return found
+
+    assert keys(en["config"]) == keys(ru["config"])
+    assert keys(en["options"]) == keys(ru["options"])
+    assert keys(en["selector"]) == keys(ru["selector"])
+    shown = {
+        "zone": [
+            "name", "lamps", "presence", "lux", "threshold", "window", "priority", "off_timeout",
+            "color", "brightness_level", "night_mode", "active_hours",
+            *[f"group_{number}" for number in range(1, 9)],
+            *[f"group_{number}_{side}" for number in range(1, 9) for side in ("from", "to")],
+        ],
+        "outdoor": ["radiation", "factor"],
+        "momentary": ["action", "lamp", "color", "duration", "return"],
+    }
+    for step, fields in shown.items():
+        for field in fields:
+            for catalog in (en, ru):
+                label = catalog["options"]["step"][step]["data"][field]
+                assert label and label != field
+    for code in (
+        "need_name", "need_lamps", "bad_lamp", "need_presence", "bad_presence", "bad_timeout",
+        "bad_lux", "bad_threshold", "bad_window", "bad_color", "bad_color_temp", "bad_brightness",
+        "bad_active_window", "bad_factor", "need_color", "bad_duration", "bad_return", "need_zone",
+        "duplicate_key",
+    ):
+        for catalog in (en, ru):
+            for flow in ("config", "options"):
+                text = catalog[flow]["error"][code]
+                assert text and text != code
+    assert en["selector"]["return_mode"]["options"]["restore"] == "Restore"
+    assert ru["selector"]["return_mode"]["options"]["off"] == "Выключить"
+    assert en["selector"]["momentary_action"]["options"]["new"] == "New"
+    assert ru["selector"]["momentary_action"]["options"]["new"] != "new"
