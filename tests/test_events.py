@@ -39,7 +39,7 @@ def _zone(**extra):
         "off_timeout": 300,
         "lux": "sensor.living_room_lux",
         "threshold": 50,
-        "lux_gap": 0,
+        "window": 10,
     }
     zone.update(extra)
     return {"version": 5, "zones": [zone]}
@@ -56,7 +56,7 @@ def _ready(home, **extra):
 
 def test_exporter_records_a_state_change_and_a_lamp_event():
     home = Home()
-    mgr = _ready(home, lux_gap=15)
+    mgr = _ready(home)
     log, cap = _logger()
     try:
         assert run(mgr.apply("living_room")) == "on"
@@ -64,12 +64,12 @@ def test_exporter_records_a_state_change_and_a_lamp_event():
         _stop(log, cap)
     text = "\n".join(cap.lines)
     occupied = [line for line in cap.lines if "reason=occupied" in line]
-    lamps = [line for line in cap.lines if "entity=light.ceiling_1" in line and "reason=lux-below-upper" in line]
+    lamps = [line for line in cap.lines if "entity=light.ceiling_1" in line and "reason=average-below" in line]
     assert occupied and "new=on" in occupied[0] and "zone=living_room" in occupied[0]
     assert "ts=1970-01-01T00:00:00Z" in occupied[0]
     assert lamps and "old=off" in lamps[0] and "new=on" in lamps[0]
     assert "reason=estimate" in text and "new=40" in text
-    assert "reason=thresholds" in text and "upper=50,lower=35" in text
+    assert "reason=thresholds" in text and "threshold=50,window=10" in text
     assert home.services.calls == [(
         "light", "turn_on",
         {"entity_id": ["light.ceiling_1", "light.ceiling_2", "light.ceiling_3"]},
@@ -77,45 +77,27 @@ def test_exporter_records_a_state_change_and_a_lamp_event():
     assert set(home.services.calls[0][2]) == {"entity_id"}
 
 
-def test_gap_zero_full_window_logs_turn_on_not_average_below_lower():
+def test_a_low_average_stays_on_and_a_rise_above_the_threshold_is_logged():
     home = Home()
-    mgr = _ready(home)
-    assert run(mgr.apply("living_room")) == "on"
-    for lamp in ("light.ceiling_1", "light.ceiling_2", "light.ceiling_3"):
-        home.states.set(lamp, "off")
-    home.services.calls.clear()
+    mgr = _ready(home, window=1)
     log, cap = _logger()
     try:
-        home.t = 600
-        assert run(mgr.apply("living_room")) == "on"
-    finally:
-        _stop(log, cap)
-    assert home.services.calls[0][1] == "turn_on"
-    assert any("reason=lux-below-upper" in line and "entity=light.ceiling_1" in line for line in cap.lines)
-    assert not any("reason=average-below-lower" in line for line in cap.lines)
-
-
-def test_corridor_on_and_average_below_lower_are_logged():
-    home = Home()
-    mgr = _ready(home, lux_gap=15)
-    assert run(mgr.apply("living_room")) == "on"
-    for lamp in ("light.ceiling_1", "light.ceiling_2", "light.ceiling_3"):
-        home.states.set(lamp, "off")
-    log, cap = _logger()
-    try:
-        home.t = 600
-        assert run(mgr.apply("living_room")) == "on"
-        home.states.set("sensor.living_room_lux", "20")
-        home.t = 601
         assert run(mgr.apply("living_room")) == "on"
         for lamp in ("light.ceiling_1", "light.ceiling_2", "light.ceiling_3"):
             home.states.set(lamp, "on")
-        home.t = 1201
-        assert run(mgr.apply("living_room")) == "lux"
+        home.t = 30
+        home.states.set("sensor.living_room_lux", "0")
+        assert run(mgr.apply("living_room")) == "on"
+        home.t = 31
+        home.states.set("sensor.living_room_lux", "400")
+        run(mgr.apply("living_room"))
+        home.t = 120
+        assert run(mgr.apply("living_room")) == "off"
     finally:
         _stop(log, cap)
-    assert any("reason=lux-below-upper" in line and "new=on" in line for line in cap.lines)
-    assert any("reason=average-below-lower" in line and "entity=living_room" in line and "new=off" in line for line in cap.lines)
+    assert any("reason=average-below" in line and "new=on" in line for line in cap.lines)
+    assert any("reason=average-above" in line and "entity=living_room" in line and "new=off" in line for line in cap.lines)
+    assert not any("reason=average-below-lower" in line for line in cap.lines)
 
 
 def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
@@ -133,7 +115,7 @@ def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
             "off_timeout": 30,
             "lux": "sensor.living_room_lux",
             "threshold": 50,
-            "lux_gap": 0,
+            "window": 10,
             "color": [255, 0, 0],
             "color_temp": 2700,
         }],
@@ -149,10 +131,10 @@ def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
     assert home.services.calls[0] == ("light", "turn_on", {"entity_id": ["light.top"], "color_temp_kelvin": 2700})
     assert home.services.calls[1] == ("light", "turn_on", {"entity_id": ["light.top"], "color_temp_kelvin": 2700})
     stuck = next(line for line in cap.lines if "entity=light.top" in line and "old=on" in line and "new=on" in line)
-    assert "reason=lux-below-upper" in stuck
+    assert "reason=average-below" in stuck
     assert "service=turn_on" in stuck and "kelvin=2700" in stuck and "rgb=-" in stuck
     assert "brightness=-" in stuck and "presence=on" in stuck and "estimate=40" in stuck
-    assert "upper=50" in stuck and "lower=50" in stuck and "owner=living_room" in stuck
+    assert "threshold=50" in stuck and "window=10" in stuck and "owner=living_room" in stuck
 
     plain_home = Home()
     plain_home.states.set("binary_sensor.p", "on")

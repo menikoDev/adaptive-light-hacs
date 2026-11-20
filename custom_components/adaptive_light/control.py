@@ -37,82 +37,89 @@ def light_estimate(room_lux: float | None, room_coefficient: float, radiation: f
     return None
 
 
-LUX_AVERAGE_S = 600.0
+DEFAULT_WINDOW_MIN = 10
+DEFAULT_WINDOW_S = 600.0
 
 
-def lower_lux(upper: float, gap: float) -> float:
-    """Lower threshold is the upper threshold minus the gap. A gap of 0 keeps them equal."""
-    if gap <= 0:
-        return upper
-    return max(0.0, upper - gap)
+def weighted_average(samples: list[tuple[float, float]], now: float, window: float = DEFAULT_WINDOW_S) -> float | None:
+    """Recency-weighted mean over ``window`` seconds. Newer moments weigh more.
 
-
-def allows_on(estimate: float | None, upper: float) -> bool:
-    """Turn on from the current reading. Threshold 0, or no reading, does not block."""
-    if upper <= 0 or estimate is None:
-        return True
-    return estimate < upper
-
-
-def window_average(samples: list[tuple[float, float]], now: float, window: float = LUX_AVERAGE_S) -> float | None:
-    """Time-weighted mean of the last ``window`` seconds.
-
-    ``None`` until the samples cover that whole span, so a short spike cannot decide the off.
-    Each sample holds until the next one.
+    A sample holds until the next one. An instant ``age`` seconds before ``now`` has weight
+    ``window - age``, so the newest moment weighs the full window and the far edge weighs nothing.
+    A history shorter than the window is averaged over the span that exists. One sample is itself.
     """
     if not samples or window <= 0:
         return None
-    start = now - window
-    if samples[0][0] > start:
+    usable = [(stamp, value) for stamp, value in samples if stamp <= now]
+    if not usable:
         return None
+    start = now - window
     index = 0
-    while index + 1 < len(samples) and samples[index + 1][0] <= start:
+    while index + 1 < len(usable) and usable[index + 1][0] <= start:
+        index += 1
+    if usable[index][0] > start:
+        moment = usable[index][0]
+        value = usable[index][1]
+        index += 1
+    else:
+        moment = start
+        value = usable[index][1]
         index += 1
     total = 0.0
-    covered = 0.0
-    moment = start
-    value = samples[index][1]
-    index += 1
-    while index < len(samples) and samples[index][0] < now:
-        nxt = samples[index][0]
-        total += value * (nxt - moment)
-        covered += nxt - moment
+    weight_sum = 0.0
+
+    def accumulate(held: float, begin: float, end: float) -> None:
+        nonlocal total, weight_sum
+        if end <= begin:
+            return
+        # weight(t) = t - start. Integral over [begin, end] is half the difference of squares.
+        gained = 0.5 * ((end - start) ** 2 - (begin - start) ** 2)
+        if gained <= 0:
+            return
+        total += held * gained
+        weight_sum += gained
+
+    while index < len(usable) and usable[index][0] < now:
+        nxt = usable[index][0]
+        accumulate(value, moment, nxt)
         moment = nxt
-        value = samples[index][1]
+        value = usable[index][1]
         index += 1
     if now > moment:
-        total += value * (now - moment)
-        covered += now - moment
-    if covered <= 0:
-        return None
-    return total / covered
+        accumulate(value, moment, now)
+    if weight_sum <= 0:
+        return usable[-1][1]
+    return total / weight_sum
 
 
-def average_recheck(samples: list[tuple[float, float]], now: float, lower: float, window: float = LUX_AVERAGE_S) -> float | None:
-    """Seconds until the 10-minute average should be read again. ``None`` when it will not move."""
-    if not samples:
+def next_average_change(
+    samples: list[tuple[float, float]], now: float, threshold: float, window: float = DEFAULT_WINDOW_S,
+) -> float | None:
+    """Seconds until the weighted average crosses ``threshold``. ``None`` when it will not."""
+    if not samples or window <= 0 or threshold <= 0:
         return None
-    if samples[0][0] > now - window:
-        return samples[0][0] + window - now
-    average = window_average(samples, now, window)
-    if average is None or average < lower:
+    current = weighted_average(samples, now, window)
+    if current is None:
         return None
-    start = now - window
-    edge = samples[0][1]
-    nxt = None
-    for stamp, value in samples:
-        if stamp <= start:
-            edge = value
-        elif nxt is None:
-            nxt = stamp
-    current = samples[-1][1]
-    bound = window if nxt is None else nxt + window - now
-    slope = (current - edge) / window
-    if slope < 0:
-        cross = (lower - average) / slope
-        if 0 < cross <= bound:
-            return cross
-    return bound if bound > 0 else None
+    below = current < threshold
+    step = 1.0 if window <= 3600 else 30.0
+    previous = 0.0
+    dt = step
+    while dt <= window + 1e-9:
+        future = weighted_average(samples, now + dt, window)
+        if future is not None and (future < threshold) != below:
+            lo, hi = previous, dt
+            for _ in range(16):
+                mid = (lo + hi) / 2
+                mid_value = weighted_average(samples, now + mid, window)
+                if mid_value is not None and (mid_value < threshold) != below:
+                    hi = mid
+                else:
+                    lo = mid
+            return hi if hi > 0 else step
+        previous = dt
+        dt += step
+    return None
 
 
 def decide(occupied: bool, off_since: float | None, now: float, timeout: float) -> tuple[str, float | None]:

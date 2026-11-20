@@ -9,7 +9,7 @@ import time
 from typing import Any, Callable
 
 from .const import DOMAIN
-from .control import LUX_AVERAGE_S, allows_on, average_recheck, decide, in_night_window, lower_lux, window_average
+from .control import decide, in_night_window, next_average_change, weighted_average
 from .events import emit
 from .model import Config, outdoor_block
 from .persistence import MANUAL_OFF_EPOCH, PersistedState
@@ -41,6 +41,7 @@ class AdaptiveLightManager:
         self._recheck: set[str] = set()
         self._block_logged: set[str] = set()
         self._lux_hold: set[str] = set()
+        self._released: set[str] = set()
         self._apply_stack: set[str] = set()
         self._again: set[str] = set()
         self._lamps = {entity for spec in self.cfg.zones.values() for entity in spec["lamps"]}
@@ -174,38 +175,47 @@ class AdaptiveLightManager:
             self._notify()
             return "night"
         level = self.estimate(zone)
-        upper = float(spec.get("threshold", 50))
-        gap = float(spec.get("lux_gap") or 0)
-        lower = lower_lux(upper, gap)
+        threshold = float(spec.get("threshold", 50))
+        window_min = float(spec.get("window") or 10)
+        window = window_min * 60.0
         self._log_estimate(zone, spec, level)
-        self._log_thresholds(zone, upper, lower)
-        if upper > 0 and level is not None:
-            self._note_lux(zone, level)
-        average = window_average(self._lux_samples.get(zone, []), self.now()) if upper > 0 else None
-        window_full = average is not None
-        if gap > 0 and window_full and self.occupied(zone) and upper > 0 and level is not None and average < lower:
-            self._lux_hold.add(zone)
-            self._off_since.pop(zone, None)
-            self._recheck.discard(zone)
-            self._log_decision(zone, "off", "average-below-lower")
-            await self._set_lamps(zone, spec["lamps"], "off", "average-below-lower")
-            self._notify()
-            return "lux"
-        command, since = decide(self.occupied(zone), self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
-        if command == "on" and not self._lux_allows_on(level, upper, gap, average, lower, window_full):
+        self._log_thresholds(zone, threshold, window_min)
+        if threshold > 0 and level is not None:
+            self._note_lux(zone, level, window)
+        average = weighted_average(self._lux_samples.get(zone, []), self.now(), window) if threshold > 0 else None
+        occupied = self.occupied(zone)
+        if occupied:
+            self._released.discard(zone)
+        # A finished off-timeout must not start again on a lux tick. That wait used to
+        # look like presence and let a dark refrigerator steal a shared lamp.
+        if not occupied and zone in self._released:
             command, since = "wait", None
+            timed_out = False
+        else:
+            command, since = decide(occupied, self._off_since.get(zone), self.now(), float(spec["off_timeout"]))
+            timed_out = command == "off"
+        if command == "on" and threshold > 0 and average is not None:
+            if average > threshold:
+                command, since = "off", None
+                self._lux_hold.add(zone)
+            elif not average < threshold:
+                command, since = "wait", None
+        if timed_out:
+            self._released.add(zone)
         if since is None:
             self._off_since.pop(zone, None)
         else:
             self._off_since[zone] = since
         if command == "on":
-            reason = self._on_reason(zone, level, upper)
+            reason = self._on_reason(zone, threshold, average)
+        elif command == "off" and zone in self._lux_hold:
+            reason = "average-above"
         elif command == "off":
             reason = "timeout"
-        elif not self.occupied(zone):
+        elif not occupied:
             reason = "no-presence"
         else:
-            reason = "lux-not-below-upper"
+            reason = "average-at-threshold"
         self._recheck.discard(zone)
         self._log_decision(zone, command if command in _SERVICE else "wait", reason)
         if command in _SERVICE:
@@ -403,14 +413,14 @@ class AdaptiveLightManager:
         self._bus()["contexts"].add(context.id)
         return context
 
-    def _note_lux(self, zone: str, level: float) -> None:
+    def _note_lux(self, zone: str, level: float, window: float) -> None:
         samples = self._lux_samples.setdefault(zone, [])
         now = self.now()
         if samples and samples[-1][0] == now:
             samples[-1] = (now, level)
         else:
             samples.append((now, level))
-        start = now - LUX_AVERAGE_S
+        start = now - window
         keep = 0
         for index, (stamp, _value) in enumerate(samples):
             if stamp <= start:
@@ -491,10 +501,13 @@ class AdaptiveLightManager:
 
     def _service_facts(self, zone: str, entity: str, want: str, data: dict) -> dict:
         spec = self.cfg.zones.get(zone) or {}
-        upper = int(spec.get("threshold") or 0)
-        gap = int(spec.get("lux_gap") or 0)
+        threshold = int(spec.get("threshold") or 0)
+        window_min = int(spec.get("window") or 10)
         level = self.estimate(zone) if zone in self.cfg.zones else None
-        average = window_average(self._lux_samples.get(zone, []), self.now()) if upper > 0 else None
+        average = (
+            weighted_average(self._lux_samples.get(zone, []), self.now(), window_min * 60.0)
+            if threshold > 0 else None
+        )
         found = self._owner_of(entity)
         rgb = data.get("rgb_color")
         if isinstance(rgb, list):
@@ -509,8 +522,8 @@ class AdaptiveLightManager:
             "presence": "on" if zone in self.cfg.zones and self.occupied(zone) else "off",
             "estimate": _logged_number(level),
             "average": None if average is None else _logged_number(round(float(average), 2)),
-            "upper": upper,
-            "lower": lower_lux(upper, gap),
+            "threshold": threshold,
+            "window": window_min,
             "owner": found[1] if found else None,
         }
 
@@ -534,8 +547,8 @@ class AdaptiveLightManager:
         new = "-" if level is None else f"{float(level):g}"
         self._log_value(zone, "estimate", spec.get("lux") or "estimate", new, "estimate")
 
-    def _log_thresholds(self, zone: str, upper: float, lower: float) -> None:
-        self._log_value(zone, "thresholds", zone, f"upper={upper:g},lower={lower:g}", "thresholds")
+    def _log_thresholds(self, zone: str, threshold: float, window_min: float) -> None:
+        self._log_value(zone, "thresholds", zone, f"threshold={threshold:g},window={window_min:g}", "thresholds")
 
     def _log_decision(self, zone: str, new: str, reason: str) -> None:
         if self._decision.get(zone) == new and self._decision_reason.get(zone) == reason:
@@ -545,17 +558,11 @@ class AdaptiveLightManager:
         self._decision_reason[zone] = reason
         self._emit(zone, zone, old, new, reason)
 
-    def _lux_allows_on(self, level: float | None, upper: float, gap: float, average: float | None, lower: float, window_full: bool) -> bool:
-        """Gap 0 follows the current reading. A positive gap uses the full-window average once it exists."""
-        if gap > 0 and window_full and average is not None:
-            return lower <= average < upper
-        return allows_on(level, upper)
-
-    def _on_reason(self, zone: str, level: float | None, upper: float) -> str:
+    def _on_reason(self, zone: str, threshold: float, average: float | None) -> str:
         if zone in self._recheck:
             return "save-recheck"
-        if upper > 0 and level is not None:
-            return "lux-below-upper"
+        if threshold > 0 and average is not None and average < threshold:
+            return "average-below"
         return "presence"
 
     def cancel_timer(self, zone: str) -> None:
@@ -592,8 +599,8 @@ class AdaptiveLightManager:
                 delays.append(float(spec["night_still"]) * 60 - (self.now() - last))
         if float(spec.get("threshold") or 0) > 0:
             samples = self._lux_samples.get(zone) or []
-            lower = lower_lux(float(spec.get("threshold") or 0), float(spec.get("lux_gap") or 0))
-            delay = average_recheck(samples, self.now(), lower)
+            window = float(spec.get("window") or 10) * 60.0
+            delay = next_average_change(samples, self.now(), float(spec.get("threshold") or 0), window)
             if delay is not None:
                 delays.append(delay)
         pending = [item for item in delays if item > 0]

@@ -83,6 +83,14 @@ def _brightness(value: Any) -> int | None:
     return number
 
 
+def _window(value: Any) -> int:
+    """Minutes of lux history. Missing, empty, or not a positive number is 10."""
+    number = _timeout(value)
+    if number is None or number < 1:
+        return 10
+    return number
+
+
 def _timeout(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -160,9 +168,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     threshold = _timeout(raw.get("threshold"))
     if threshold is None:
         threshold = 50
-    gap = _timeout(raw.get("lux_gap"))
-    if gap is None:
-        gap = 0
+    window = _window(raw.get("window"))
     priority = _priority(raw.get("priority"))
     color = _color(raw.get("color"))
     color_temp = _color_temp(raw.get("color_temp"))
@@ -172,7 +178,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
         generation = 0
     return {
         "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
-        "lux": lux, "threshold": threshold, "lux_gap": gap, "priority": priority,
+        "lux": lux, "threshold": threshold, "window": window, "priority": priority,
         "color": color, "color_temp": color_temp, "brightness": brightness,
         "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
         "manual_clear": generation,

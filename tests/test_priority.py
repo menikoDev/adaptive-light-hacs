@@ -15,7 +15,7 @@ def _room(**extra):
         "presence": ["binary_sensor.room"],
         "off_timeout": 30,
         "threshold": 50,
-        "lux_gap": 0,
+        "window": 10,
         "priority": 0,
     }
     zone.update(extra)
@@ -184,7 +184,7 @@ def test_threshold_zero_on_the_higher_zone_stays_presence_only():
     _presence(home, room="on", door="on")
     home.states.set("sensor.room", "10000")
     mgr = _mgr(home, [
-        _room(lux="sensor.room", threshold=50, lux_gap=0),
+        _room(lux="sensor.room", threshold=50, window=10),
         _fridge(lux="sensor.room", threshold=0),
     ])
     run(mgr.apply("living_room"))
@@ -260,3 +260,35 @@ def test_a_turn_off_from_another_entry_does_not_stick_and_an_external_off_blocks
     fridge.enabled["fridge"] = False
     run(room.apply("living_room"))
     assert _calls(home, "light.fridge") == []
+
+
+def test_an_idle_higher_zone_does_not_steal_a_shared_lamp_when_lux_changes():
+    home = Home()
+    lamp = "light.living_room_top_lamp_bottom"
+    _presence(home, room="on", door="off")
+    home.states.set("light.ceiling", "on")
+    home.states.set(lamp, "on")
+    home.states.set("sensor.fridge", "40")
+    mgr = _mgr(home, [
+        _room(lamps=["light.ceiling", lamp]),
+        _fridge(lamps=[lamp], lux="sensor.fridge", threshold=50, off_timeout=10),
+    ])
+    home.t = 0
+    run(mgr.apply("living_room"))
+    run(mgr.apply("fridge"))
+    home.t = 10
+    run(mgr.apply("fridge"))
+    assert mgr._owner_of(lamp)[1] == "living_room"
+    assert not mgr.is_active("fridge")
+    home.services.calls.clear()
+    home.t = 11
+    home.states.set("sensor.fridge", "0")
+    log, cap = _logger()
+    try:
+        assert run(mgr.apply("fridge")) == "wait"
+    finally:
+        _stop(log, cap)
+    assert mgr._owner_of(lamp)[1] == "living_room"
+    assert not mgr.is_active("fridge")
+    assert _calls(home, lamp) == []
+    assert not any("reason=owner" in line and "new=fridge" in line for line in cap.lines)

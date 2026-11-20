@@ -189,12 +189,12 @@ class _Fields:
             )),
             current.get("threshold", 50),
         )
-        gap, gap_sel = self._field(
-            "lux_gap",
+        window, window_sel = self._field(
+            "window",
             sel.NumberSelector(sel.NumberSelectorConfig(
-                min=0, max=100000, step=1, unit_of_measurement="lx", mode=sel.NumberSelectorMode.BOX,
+                min=1, max=1440, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX,
             )),
-            current.get("lux_gap", 0),
+            current.get("window", 10),
         )
         priority, priority_sel = self._field(
             "priority",
@@ -234,7 +234,7 @@ class _Fields:
             current.get("night_still", 60),
         )
         return vol.Schema({
-            name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, gap: gap_sel,
+            name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, window: window_sel,
             priority: priority_sel, color: color_sel, color_temp: color_temp_sel, brightness: brightness_sel,
             timeout: timeout_sel, night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
@@ -270,12 +270,12 @@ class _Fields:
             threshold = _timeout(user_input.get("threshold"))
             if threshold is None:
                 errors["threshold"] = "bad_threshold"
-        if "lux_gap" not in user_input or user_input.get("lux_gap") in (None, ""):
-            gap = 0
+        if "window" not in user_input or user_input.get("window") in (None, ""):
+            window = 10
         else:
-            gap = _timeout(user_input.get("lux_gap"))
-            if gap is None:
-                errors["lux_gap"] = "bad_gap"
+            window = _timeout(user_input.get("window"))
+            if window is None or window < 1:
+                errors["window"] = "bad_window"
         priority = _priority_input(user_input.get("priority") if "priority" in user_input else None)
         color = _color_input(user_input.get("color") if "color" in user_input else None)
         if color is None:
@@ -303,7 +303,7 @@ class _Fields:
                 coefficient = zone["lux_coefficient"]
         return {
             "name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout,
-            "lux": lux, "threshold": threshold, "lux_gap": gap, "priority": priority,
+            "lux": lux, "threshold": threshold, "window": window, "priority": priority,
             "color": color, "color_temp": color_temp, "brightness": brightness, "lux_coefficient": coefficient,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
         }, {}
