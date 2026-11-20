@@ -35,8 +35,11 @@ def run(coro):
 
 
 class _Entries:
-    def async_update_entry(self, entry, title=None):
-        entry.title = title
+    def async_update_entry(self, entry, title=None, options=None, **_kwargs):
+        if title is not None:
+            entry.title = title
+        if options is not None:
+            entry.options = options
 
 
 class Wizard(cf.AdaptiveLightConfigFlow):
@@ -136,6 +139,13 @@ def test_options_is_the_same_window_and_keeps_this_zone_only():
     assert zones[0]["manual_clear"] == 1
     assert zones[0]["lamps"] == ["light.a"] and zones[0]["off_timeout"] == 10
     assert options.config_entry.title == "Hall renamed"
+    assert options.config_entry.options[CONF_CONFIG]["zones"][0]["lamps"] == ["light.a"]
+
+    added = sub(options, "zone", _fill(name="Hall renamed", lamps=["light.a", "light.b"], presence=["binary_sensor.p"], timeout=10))
+    assert added["data"]["config"]["zones"][0]["lamps"] == ["light.a", "light.b"]
+    mixed = sub(options, "zone", _fill(name="Hall renamed", lamps=["light.b", "light.c"], presence=["binary_sensor.p"], timeout=10))
+    assert mixed["data"]["config"]["zones"][0]["lamps"] == ["light.b", "light.c"]
+    assert options.config_entry.options[CONF_CONFIG]["zones"][0]["lamps"] == ["light.b", "light.c"]
 
     HASS.config.language = "ru"
     try:

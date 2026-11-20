@@ -70,7 +70,15 @@ async def _updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     mgr = hass.data[DOMAIN][entry.entry_id]
     actions = _runtimes(hass).pop(entry.entry_id, None)
+    # Options are already the saved config. Lamps that left this entry must
+    # move now; the manager that used to own them is about to disappear.
+    saved = Config.from_dict(entry_config(entry))
+    coming = {entity for spec in saved.zones.values() for entity in spec["lamps"]}
+    removed = set(mgr._lamps) - coming
+    if mgr.cfg.zones and not any(zone in saved.zones for zone in mgr.cfg.zones):
+        removed = set(mgr._lamps)
     mgr.async_stop()
+    await mgr.reassign(removed)
     if actions is not None:
         actions.async_stop()
     await mgr.async_flush()

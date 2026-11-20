@@ -386,6 +386,13 @@ class _Fields:
             self.cfg["momentary_actions"] = actions
         return parsed["name"]
 
+    def _write_options(self, title: str, cfg: dict) -> None:
+        entries = getattr(self.hass, "config_entries", None)
+        update = getattr(entries, "async_update_entry", None)
+        if update is None or getattr(self, "config_entry", None) is None:
+            return
+        update(self.config_entry, title=title, options={CONF_CONFIG: cfg})
+
     def _form(self, current: dict, errors: dict | None):
         return self.async_show_form(step_id="zone", data_schema=self._schema(current), errors=errors or None)
 
@@ -395,10 +402,10 @@ class _Fields:
         if errors:
             return self._form(self._current(None), {"base": errors[0].code})
         if self._saving:
-            entries = getattr(self.hass, "config_entries", None)
-            update = getattr(entries, "async_update_entry", None)
-            if update is not None and getattr(self, "config_entry", None) is not None:
-                update(self.config_entry, title=title)
+            # Write the new lamp list and hours before the update listener runs.
+            # A title-only update used to notify that listener while options still
+            # held the previous lamps, so Submit reloaded the old config.
+            self._write_options(title, cfg)
             return self.async_create_entry(title="", data={CONF_CONFIG: cfg})
         return self.async_create_entry(title=title, data={CONF_CONFIG: cfg})
 
@@ -471,10 +478,7 @@ class _Fields:
     def _finish_outdoor(self):
         cfg = {"version": 5, "zones": [], "outdoor": outdoor_block(self.cfg.get("outdoor") or {})}
         if self._saving:
-            entries = getattr(self.hass, "config_entries", None)
-            update = getattr(entries, "async_update_entry", None)
-            if update is not None and getattr(self, "config_entry", None) is not None:
-                update(self.config_entry, title="Outdoor")
+            self._write_options("Outdoor", cfg)
             return self.async_create_entry(title="", data={CONF_CONFIG: cfg})
         return self.async_create_entry(title="Outdoor", data={CONF_CONFIG: cfg})
 

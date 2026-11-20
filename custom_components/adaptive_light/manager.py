@@ -45,6 +45,7 @@ class AdaptiveLightManager:
         self._apply_stack: set[str] = set()
         self._again: set[str] = set()
         self._hold_sent: dict[str, float] = {}
+        self._stopped = False
         self._lamps = {entity for spec in self.cfg.zones.values() for entity in spec["lamps"]}
         self._remember_lamps()
         self._listeners: list[Callable[[], None]] = []
@@ -312,6 +313,8 @@ class AdaptiveLightManager:
         rows = []
         for mgr in self._peers():
             for zone, spec in mgr.cfg.zones.items():
+                if mgr._stopped:
+                    continue
                 if lamp not in spec["lamps"] or not mgr.enabled.get(zone, True):
                     continue
                 if not mgr._in_active_hours(spec):
@@ -713,12 +716,65 @@ class AdaptiveLightManager:
             await self.apply(zone)
             self._arm(zone)
 
+    async def async_replace_config(self, raw: dict) -> None:
+        """Run a saved config on this zone.
+
+        The lamp list and the active-hours window are whatever was just written.
+        A lamp that left is given to a zone that still lists it. The previous
+        outside-hours decision does not stay behind.
+        """
+        previous = set(self._lamps)
+        self.cfg = Config.from_dict(raw)
+        for zone in self.cfg.zone_order:
+            self.enabled.setdefault(zone, True)
+        self._lamps = {entity for spec in self.cfg.zones.values() for entity in spec["lamps"]}
+        self._remember_lamps()
+        self._decision.clear()
+        self._decision_reason.clear()
+        self._log_state.clear()
+        removed = previous - self._lamps
+        self._forget_owners(removed)
+        for zone in self.cfg.zone_order:
+            await self.apply(zone)
+        await self.reassign(removed)
+
     def async_stop(self) -> None:
+        self._stopped = True
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
         for zone in list(self._timers):
             self.cancel_timer(zone)
+        self._forget_owners(set(self._lamps))
+
+    def _forget_owners(self, lamps: set[str]) -> None:
+        """Drop bus owners that name this manager for ``lamps`` it no longer keeps."""
+        if not lamps:
+            return
+        owners = self._bus()["owners"]
+        mine = id(self)
+        for lamp in lamps:
+            ident = owners.get(lamp)
+            if isinstance(ident, tuple) and ident[0] == mine:
+                owners.pop(lamp, None)
+
+    async def reassign(self, lamps: set[str]) -> None:
+        """Point each lamp at the live zone that lists it, or at nobody."""
+        if not lamps:
+            return
+        owners = self._bus()["owners"]
+        pending: list[tuple[AdaptiveLightManager, str]] = []
+        for lamp in lamps:
+            found = self._owner_of(lamp)
+            if found is None:
+                owners.pop(lamp, None)
+                continue
+            ident = (id(found[0]), found[1])
+            owners[lamp] = ident
+            if ident not in {(id(mgr), zone) for mgr, zone in pending}:
+                pending.append(found)
+        for mgr, zone in pending:
+            await mgr.apply(zone)
 
     async def async_flush(self) -> None:
         if self.store is not None:
