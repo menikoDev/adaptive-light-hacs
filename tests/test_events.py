@@ -249,3 +249,27 @@ def test_hold_color_and_hold_brightness_call_adaptive_lighting_for_that_part_onl
     empty = run_zone(hold_color=True, hold_brightness=False, color="", color_temp=None)
     assert empty.services.calls == [("light", "turn_on", {"entity_id": ["light.desk"]})]
     assert all(call[0] != "adaptive_lighting" for call in empty.services.calls)
+
+
+def test_hold_color_with_rgb_green_turns_the_lamp_green():
+    home = Home()
+    home.services._available.add(("adaptive_lighting", "set_manual_control"))
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.desk", "off")
+    mgr = AdaptiveLightManager(home, {
+        "version": 5,
+        "zones": [{
+            "key": "desk",
+            "name": "Light Beem For Work Station",
+            "lamps": ["light.desk"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "color": [0, 255, 0],
+            "hold_color": True,
+        }],
+    }, now=home.now)
+    assert run(mgr.apply("desk")) == "on"
+    turned = [call for call in home.services.calls if call[0] == "light" and call[1] == "turn_on"]
+    assert turned
+    assert all(call[2].get("rgb_color") == [0, 255, 0] for call in turned)
