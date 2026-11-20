@@ -26,8 +26,8 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "off_timeout", "rgb", "color_temperature", "brightness_level", "active_hours", "night_mode"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still", "active_start", "active_end"}
+FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "off_timeout", "color", "brightness_level", "active_hours", "night_mode"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still", "active_hours", "active_start", "active_end"}
 
 
 def run(coro):
@@ -179,16 +179,15 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     create = _schema_fields(sub(Wizard(), "zone"))
     options = _schema_fields(sub(Options(cfg), "zone"))
     for fields in (create, options):
-        assert "color" not in fields
-        rgb = _section_fields(fields["rgb"][1])
+        assert "rgb" not in fields and "color_temperature" not in fields
+        color = _section_fields(fields["color"][1])
         for channel in ("color_r", "color_g", "color_b"):
-            channel_key, channel_sel = rgb[channel]
+            channel_key, channel_sel = color[channel]
             assert type(channel_key) is vol.Optional
             assert channel_sel.selector_type == "number" and channel_sel.config["mode"] == "box"
             assert channel_sel.config["min"] == 0 and channel_sel.config["max"] == 255
-        kelvin = _section_fields(fields["color_temperature"][1])
         bright = _section_fields(fields["brightness_level"][1])
-        kelvin_key, kelvin_sel = kelvin["color_temp"]
+        kelvin_key, kelvin_sel = color["color_temp"]
         bright_key, bright_sel = bright["brightness"]
         assert type(kelvin_key) is vol.Optional and type(bright_key) is vol.Optional
         assert kelvin_sel.selector_type == "color_temp" and kelvin_sel.config["unit"] == "kelvin"
@@ -196,7 +195,7 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         assert bright_sel.selector_type == "number" and bright_sel.config["mode"] == "slider"
         assert not (kelvin_key.description or {}).get("suggested_value")
         assert (bright_key.description or {}).get("suggested_value") in (None, "")
-        assert type(kelvin["hold_color"][0]) is vol.Required
+        assert type(color["hold_color"][0]) is vol.Required
         assert type(bright["hold_brightness"][0]) is vol.Required
         assert type(fields["priority"][0]) is vol.Required
         assert "lux_gap" not in fields
@@ -207,6 +206,9 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         night = _section_fields(fields["night_mode"][1])
         assert night["night"][1].selector_type == "boolean"
         hours = _section_fields(fields["active_hours"][1])
+        assert hours["active_hours"][1].selector_type == "boolean"
+        assert type(hours["active_hours"][0]) is vol.Required
+        assert (hours["active_hours"][0].description or {}).get("suggested_value") is False
         assert hours["active_start"][1].selector_type == "time"
         assert hours["active_end"][1].selector_type == "time"
 

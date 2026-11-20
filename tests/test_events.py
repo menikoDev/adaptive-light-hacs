@@ -312,6 +312,7 @@ def test_outside_the_active_window_an_occupied_zone_does_not_turn_the_lamp_on():
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
             "threshold": 0,
+            "active_hours": True,
             "active_start": "09:00",
             "active_end": "17:00",
         }
@@ -357,6 +358,7 @@ def test_outside_the_active_window_an_occupied_zone_does_not_turn_the_lamp_on():
             "priority": 1,
             "color": [0, 0, 255],
             "hold_color": True,
+            "active_hours": True,
             "active_start": "09:00",
             "active_end": "17:00",
         },
@@ -364,6 +366,50 @@ def test_outside_the_active_window_an_occupied_zone_does_not_turn_the_lamp_on():
     assert run(mgr.apply("light_beem_for_work_station")) == "wait"
     assert mgr._owner_of(lamp)[1] == "living_room_zone"
     assert all(call[2].get("rgb_color") != [0, 0, 255] for call in home.services.calls)
+
+
+def test_active_hours_switch_off_ignores_a_filled_overnight_window():
+    """From 15:00 until 10:00 crosses midnight. The switch defaults off, so filled times do nothing."""
+    from datetime import datetime
+
+    def at(hour, minute):
+        return lambda: datetime(2026, 11, 20, hour, minute)
+
+    def apply_at(hour, minute, **extra):
+        home = Home()
+        home.states.set("binary_sensor.p", "on")
+        home.states.set("light.desk", "off")
+        zone = {
+            "key": "desk",
+            "name": "Desk",
+            "lamps": ["light.desk"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "active_start": "15:00",
+            "active_end": "10:00",
+        }
+        zone.update(extra)
+        mgr = AdaptiveLightManager(home, {"version": 5, "zones": [zone]}, now=home.now, local_now=at(hour, minute))
+        return run(mgr.apply("desk"))
+
+    assert apply_at(12, 0) == "on"
+    assert apply_at(12, 0, active_hours=False) == "on"
+    assert apply_at(12, 0, active_hours=True) == "wait"
+    assert apply_at(15, 0, active_hours=True) == "on"
+    assert apply_at(9, 30, active_hours=True) == "on"
+    assert apply_at(10, 0, active_hours=True) == "wait"
+
+
+def test_one_hold_color_sends_rgb_when_any_box_is_set_and_kelvin_otherwise():
+    from adaptive_light.manager import _service_color
+
+    both = _service_color({"hold_color": True, "color": [0, 255, 0], "color_temp": 4003})
+    assert both == {"rgb_color": [0, 255, 0]}
+    kelvin = _service_color({"hold_color": True, "color": "", "color_temp": 4003})
+    assert kelvin == {"color_temp_kelvin": 4003}
+    off = _service_color({"hold_color": False, "color": [0, 255, 0], "color_temp": 4003})
+    assert off == {}
 
 
 def test_zone_form_groups_are_labeled_in_english_and_russian():
@@ -376,15 +422,13 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
     strings = json.load(open(os.path.join(root, "strings.json"), encoding="utf-8"))
     assert strings == en
     expected = {
-        "rgb": "RGB",
-        "color_temperature": "Color temperature",
+        "color": "Color",
         "brightness_level": "Brightness",
         "active_hours": "Active hours",
         "night_mode": "Night mode",
     }
     russian = {
-        "rgb": "Цвет RGB",
-        "color_temperature": "Цветовая температура",
+        "color": "Цвет",
         "brightness_level": "Яркость",
         "active_hours": "Активные часы",
         "night_mode": "Ночной режим",
@@ -397,4 +441,13 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
             assert sections[key]["description"]
             assert translated[key]["name"] == russian[key]
             assert translated[key]["description"]
-            assert translated[key]["name"] != key or key == "rgb"
+            assert translated[key]["name"] != key
+            assert sections[key]["description"] != translated[key]["description"]
+        assert sections["color"]["data"]["hold_color"] == "Hold color"
+        assert translated["color"]["data"]["hold_color"] == "Удерживать цвет"
+        assert "color_temp" in sections["color"]["data"] and "color_r" in sections["color"]["data"]
+        assert sections["active_hours"]["data"]["active_hours"] == "Use these hours"
+        assert translated["active_hours"]["data"]["active_hours"] == "Использовать эти часы"
+        assert sections["active_hours"]["data_description"]["active_hours"]
+        assert translated["active_hours"]["data_description"]["active_hours"]
+        assert sections["active_hours"]["data_description"]["active_hours"] != translated["active_hours"]["data_description"]["active_hours"]

@@ -112,7 +112,7 @@ def _timeout(value: Any) -> int | None:
     return number
 
 
-_GROUPS = ("rgb", "color_temperature", "brightness_level", "active_hours", "night_mode")
+_GROUPS = ("color", "brightness_level", "active_hours", "night_mode")
 
 
 def _group(key: str, fields: dict):
@@ -260,23 +260,30 @@ class _Fields:
             sel.NumberSelector(sel.NumberSelectorConfig(min=1, max=720, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX)),
             current.get("night_still", 60),
         )
+        use_hours, use_hours_sel = self._field(
+            "active_hours", sel.BooleanSelector(), current.get("active_hours") is True,
+        )
         hours_from, hours_from_sel = self._optional(
             "active_start", sel.TimeSelector(), current.get("active_start") or None,
         )
         hours_until, hours_until_sel = self._optional(
             "active_end", sel.TimeSelector(), current.get("active_end") or None,
         )
-        rgb_key, rgb_section = _group("rgb", {red: red_sel, green: green_sel, blue: blue_sel})
-        kelvin_key, kelvin_section = _group("color_temperature", {color_temp: color_temp_sel, hold_color: hold_color_sel})
+        color_key, color_section = _group("color", {
+            red: red_sel, green: green_sel, blue: blue_sel,
+            color_temp: color_temp_sel, hold_color: hold_color_sel,
+        })
         bright_key, bright_section = _group("brightness_level", {brightness: brightness_sel, hold_brightness: hold_brightness_sel})
-        hours_key, hours_section = _group("active_hours", {hours_from: hours_from_sel, hours_until: hours_until_sel})
+        hours_key, hours_section = _group("active_hours", {
+            use_hours: use_hours_sel, hours_from: hours_from_sel, hours_until: hours_until_sel,
+        })
         night_key, night_section = _group("night_mode", {
             night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
         return vol.Schema({
             name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, window: window_sel,
             priority: priority_sel, timeout: timeout_sel,
-            rgb_key: rgb_section, kelvin_key: kelvin_section, bright_key: bright_section,
+            color_key: color_section, bright_key: bright_section,
             hours_key: hours_section, night_key: night_section,
         })
 
@@ -337,6 +344,7 @@ class _Fields:
         if brightness_bad:
             errors["brightness"] = "bad_brightness"
         night = user_input.get("night") is True
+        active_hours = user_input.get("active_hours") is True
         active_start = _hhmm(user_input.get("active_start")) or ""
         active_end = _hhmm(user_input.get("active_end")) or ""
         start = _hhmm(user_input.get("night_start")) or "02:00"
@@ -359,7 +367,7 @@ class _Fields:
             "hold_color": user_input.get("hold_color") is True,
             "hold_brightness": user_input.get("hold_brightness") is True,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
-            "active_start": active_start, "active_end": active_end,
+            "active_hours": active_hours, "active_start": active_start, "active_end": active_end,
         }, {}
 
     def _store(self, parsed: dict) -> str:

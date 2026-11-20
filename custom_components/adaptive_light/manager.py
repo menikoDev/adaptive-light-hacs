@@ -285,7 +285,9 @@ class AdaptiveLightManager:
         return self.now() - since < float(self.cfg.zones[zone]["off_timeout"])
 
     def _in_active_hours(self, spec: dict) -> bool:
-        """Empty or equal times mean the zone is always active. Night mode is a different window."""
+        """The switch off, or empty or equal times, means always active. Night mode is a different window."""
+        if spec.get("active_hours") is not True:
+            return True
         start = spec.get("active_start") or ""
         end = spec.get("active_end") or ""
         if not start or not end or start == end:

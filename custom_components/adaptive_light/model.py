@@ -217,6 +217,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
         "night_start": _clock(raw.get("night_start"), "02:00"),
         "night_end": _clock(raw.get("night_end"), "06:00"),
         "night_still": _still(raw.get("night_still")),
+        "active_hours": raw.get("active_hours") is True,
         "active_start": _open_clock(raw.get("active_start")),
         "active_end": _open_clock(raw.get("active_end")),
     }

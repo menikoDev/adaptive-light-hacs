@@ -33,7 +33,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Outside the active hours the zone does not turn lamps on and does not take shared lamps. Empty or equal active hours mean always. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns. Another zone is added as another entry.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside that window. Off means always, even if the times are filled. Empty or equal times also mean always. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns. Another zone is added as another entry.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -54,23 +54,18 @@
           "night_start": "Night from",
           "night_end": "Night until",
           "night_still": "Still, min",
+          "active_hours": "Use these hours",
           "active_start": "From",
           "active_end": "Until"
         },
         "sections": {
-          "rgb": {
-            "name": "RGB",
-            "description": "Red, green, and blue, each from 0 to 255.",
+          "color": {
+            "name": "Color",
+            "description": "Red, green, and blue, each from 0 to 255, and a Kelvin slider. Hold color sends RGB when any box is filled, otherwise Kelvin, and tells Adaptive Lighting not to change the color.",
             "data": {
               "color_r": "Red",
               "color_g": "Green",
-              "color_b": "Blue"
-            }
-          },
-          "color_temperature": {
-            "name": "Color temperature",
-            "description": "Kelvin, and whether this zone holds the color.",
-            "data": {
+              "color_b": "Blue",
               "color_temp": "Color temperature, K",
               "hold_color": "Hold color"
             }
@@ -85,10 +80,14 @@
           },
           "active_hours": {
             "name": "Active hours",
-            "description": "Turns lamps on and takes shared lamps only between these times. Empty or equal times mean always.",
+            "description": "When this is on, the zone turns lamps on and takes shared lamps only between these times, including a window that crosses midnight. Off, or empty or equal times, means always.",
             "data": {
+              "active_hours": "Use these hours",
               "active_start": "From",
               "active_end": "Until"
+            },
+            "data_description": {
+              "active_hours": "Off keeps the zone always active, even when From and Until are filled. On uses that window, including one that runs overnight."
             }
           },
           "night_mode": {
@@ -147,7 +146,7 @@
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Outside the active hours the zone does not turn lamps on and does not take shared lamps. Empty or equal active hours mean always. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside that window. Off means always, even if the times are filled. Empty or equal times also mean always. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -168,23 +167,18 @@
           "night_start": "Night from",
           "night_end": "Night until",
           "night_still": "Still, min",
+          "active_hours": "Use these hours",
           "active_start": "From",
           "active_end": "Until"
         },
         "sections": {
-          "rgb": {
-            "name": "RGB",
-            "description": "Red, green, and blue, each from 0 to 255.",
+          "color": {
+            "name": "Color",
+            "description": "Red, green, and blue, each from 0 to 255, and a Kelvin slider. Hold color sends RGB when any box is filled, otherwise Kelvin, and tells Adaptive Lighting not to change the color.",
             "data": {
               "color_r": "Red",
               "color_g": "Green",
-              "color_b": "Blue"
-            }
-          },
-          "color_temperature": {
-            "name": "Color temperature",
-            "description": "Kelvin, and whether this zone holds the color.",
-            "data": {
+              "color_b": "Blue",
               "color_temp": "Color temperature, K",
               "hold_color": "Hold color"
             }
@@ -199,10 +193,14 @@
           },
           "active_hours": {
             "name": "Active hours",
-            "description": "Turns lamps on and takes shared lamps only between these times. Empty or equal times mean always.",
+            "description": "When this is on, the zone turns lamps on and takes shared lamps only between these times, including a window that crosses midnight. Off, or empty or equal times, means always.",
             "data": {
+              "active_hours": "Use these hours",
               "active_start": "From",
               "active_end": "Until"
+            },
+            "data_description": {
+              "active_hours": "Off keeps the zone always active, even when From and Until are filled. On uses that window, including one that runs overnight."
             }
           },
           "night_mode": {
