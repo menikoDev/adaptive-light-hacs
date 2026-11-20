@@ -271,6 +271,48 @@ def test_a_turn_off_from_another_entry_does_not_stick_and_an_external_off_blocks
     assert _calls(home, "light.fridge") == []
 
 
+def test_an_idle_zone_turns_off_a_shared_lamp_handed_back():
+    """The fridge times out, the living room owns the lamp, then times out too.
+
+    Ownership falls back to the fridge, which is already idle. It must turn the lamp off.
+    """
+    home = Home()
+    lamp = "light.living_room_top_lamp_bottom"
+    home.states.set("binary_sensor.room", "off")
+    home.states.set("binary_sensor.door", "on")
+    home.states.set(lamp, "off")
+    mgr = _mgr(home, [
+        _room(key="living_room_zone", lamps=[lamp], off_timeout=20, threshold=0, priority=0),
+        _fridge(key="living_room_refrigerator", lamps=[lamp], off_timeout=14, threshold=0, priority=10),
+    ])
+    assert run(mgr.apply("living_room_refrigerator")) == "on"
+    assert mgr._owner_of(lamp)[1] == "living_room_refrigerator"
+    home.states.set(lamp, "on")
+
+    home.t = 6
+    home.states.set("binary_sensor.door", "off")
+    assert run(mgr.apply("living_room_refrigerator")) == "wait"
+    assert mgr.is_active("living_room_refrigerator")
+
+    home.states.set("binary_sensor.room", "on")
+    home.t = 20
+    assert run(mgr.apply("living_room_refrigerator")) == "off"
+    assert mgr._owner_of(lamp)[1] == "living_room_zone"
+    assert not mgr.is_active("living_room_refrigerator")
+    home.states.set(lamp, "on")
+
+    home.t = 20
+    home.states.set("binary_sensor.room", "off")
+    assert run(mgr.apply("living_room_zone")) == "wait"
+    home.services.calls.clear()
+    home.t = 40
+    assert run(mgr.apply("living_room_zone")) == "off"
+    assert mgr._owner_of(lamp)[1] == "living_room_refrigerator"
+    assert not mgr.occupied("living_room_refrigerator")
+    assert not mgr.is_active("living_room_refrigerator")
+    assert ("light", "turn_off", {"entity_id": [lamp]}) in home.services.calls
+
+
 def test_an_idle_higher_zone_does_not_steal_a_shared_lamp_when_lux_changes():
     home = Home()
     lamp = "light.living_room_top_lamp_bottom"

@@ -207,8 +207,20 @@ class AdaptiveLightManager:
             self._off_since.pop(zone, None)
         else:
             self._off_since[zone] = since
+        # A finished timeout answers "wait" so a lux tick cannot look like presence.
+        # That same answer used to keep a lit shared lamp on when this idle zone
+        # became the owner again: the previous zone had already let go, and nobody
+        # called turn_off.
+        handed_back = False
+        if command == "wait" and not occupied and zone in self._released:
+            if any(self._owns(zone, lamp) and self.is_on(lamp) for lamp in spec["lamps"]):
+                command = "off"
+                handed_back = True
+                self._off_since.pop(zone, None)
         if command == "on":
             reason = self._on_reason(zone, threshold, average)
+        elif handed_back:
+            reason = "hand-back"
         elif command == "off" and zone in self._lux_hold:
             reason = "average-above"
         elif command == "off":
