@@ -130,6 +130,82 @@ def _open_clock(value: Any) -> str:
     return _clock(value, "")
 
 
+_WINDOW_TEXT = re.compile(r"^(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})$")
+
+
+def parse_window_text(value: Any) -> dict | None:
+    """``HH:MM-HH:MM``. Equal clocks are not a window."""
+    if not isinstance(value, str):
+        return None
+    match = _WINDOW_TEXT.match(value.strip())
+    if match is None:
+        return None
+    start = _clock(match.group(1), "")
+    end = _clock(match.group(2), "")
+    if not start or not end or start == end:
+        return None
+    return {"start": start, "end": end}
+
+
+def _window_item(item: Any) -> dict | None:
+    if isinstance(item, str):
+        return parse_window_text(item)
+    if isinstance(item, dict):
+        start = _open_clock(item.get("start"))
+        end = _open_clock(item.get("end"))
+        if start and end and start != end:
+            return {"start": start, "end": end}
+    return None
+
+
+def collect_windows(value: Any) -> list[dict]:
+    """Keep well-formed windows and drop the rest. Order stays, duplicates go."""
+    if isinstance(value, str):
+        value = [part.strip() for part in re.split(r"[\n,]", value) if part.strip()]
+    if not isinstance(value, list):
+        return []
+    out: list[dict] = []
+    for item in value:
+        window = _window_item(item)
+        if window and window not in out:
+            out.append(window)
+    return out
+
+
+def windows_input(value: Any) -> tuple[list[dict], bool]:
+    """Parse a form value. ``([], False)`` is an empty list. ``([], True)`` is not a window."""
+    if value in (None, "", []):
+        return [], False
+    if isinstance(value, str):
+        parts = [part.strip() for part in re.split(r"[\n,]", value) if part.strip()]
+        if not parts:
+            return [], False
+        value = parts
+    if not isinstance(value, list):
+        return [], True
+    out: list[dict] = []
+    for item in value:
+        window = _window_item(item)
+        if window is None:
+            return [], True
+        if window not in out:
+            out.append(window)
+    return out, False
+
+
+def zone_windows(raw: dict) -> list[dict]:
+    """The saved list. A missing list still reads the old From/Until pair. An empty list stays empty."""
+    if not isinstance(raw, dict):
+        return []
+    if "active_windows" in raw:
+        return collect_windows(raw.get("active_windows"))
+    start = _open_clock(raw.get("active_start"))
+    end = _open_clock(raw.get("active_end"))
+    if start and end and start != end:
+        return [{"start": start, "end": end}]
+    return []
+
+
 def _clock(value: Any, default: str) -> str:
     if not isinstance(value, str):
         return default
@@ -218,8 +294,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
         "night_end": _clock(raw.get("night_end"), "06:00"),
         "night_still": _still(raw.get("night_still")),
         "active_hours": raw.get("active_hours") is True,
-        "active_start": _open_clock(raw.get("active_start")),
-        "active_end": _open_clock(raw.get("active_end")),
+        "active_windows": zone_windows(raw),
     }
 
 

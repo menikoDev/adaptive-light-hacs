@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -13,7 +14,7 @@ from homeassistant.helpers import selector as sel
 from homeassistant.util import slugify
 
 from .const import CONF_CONFIG, DOMAIN
-from .model import empty_config, normalise, outdoor_block, rgb_channels, unique_key, validate
+from .model import empty_config, normalise, outdoor_block, parse_window_text, rgb_channels, unique_key, validate, windows_input, zone_windows
 from .momentary import keep_section, parse_actions, write_action
 
 # Schema keys are the translation keys. The visible words live in strings.json
@@ -118,6 +119,30 @@ _GROUPS = ("color", "brightness_level", "active_hours", "night_mode")
 def _group(key: str, fields: dict):
     """One collapsible block. The submitted value is a dict of the fields inside it."""
     return vol.Required(key), section(vol.Schema(fields), {"collapsed": False})
+
+
+def _window_labels(current: dict) -> list[str]:
+    """Chips for the Windows field. A stored zone shows ``HH:MM-HH:MM`` for each window."""
+    if isinstance(current.get("active_hours"), dict) and "active_windows" not in current:
+        raw = current["active_hours"].get("active_windows")
+    elif "active_windows" in current:
+        raw = current.get("active_windows")
+    else:
+        return [f"{window['start']}-{window['end']}" for window in zone_windows(current)]
+    if isinstance(raw, str):
+        raw = [part.strip() for part in re.split(r"[\n,]", raw) if part.strip()]
+    labels: list[str] = []
+    for item in raw or []:
+        if isinstance(item, str) and item.strip():
+            parsed = parse_window_text(item)
+            label = f"{parsed['start']}-{parsed['end']}" if parsed else item.strip()
+        elif isinstance(item, dict) and item.get("start") and item.get("end"):
+            label = f"{item['start']}-{item['end']}"
+        else:
+            continue
+        if label not in labels:
+            labels.append(label)
+    return labels
 
 
 def _flatten(user_input: dict) -> dict:
@@ -263,11 +288,13 @@ class _Fields:
         use_hours, use_hours_sel = self._field(
             "active_hours", sel.BooleanSelector(), current.get("active_hours") is True,
         )
-        hours_from, hours_from_sel = self._optional(
-            "active_start", sel.TimeSelector(), current.get("active_start") or None,
-        )
-        hours_until, hours_until_sel = self._optional(
-            "active_end", sel.TimeSelector(), current.get("active_end") or None,
+        labels = _window_labels(current)
+        windows_key, windows_sel = self._optional(
+            "active_windows",
+            sel.SelectSelector(sel.SelectSelectorConfig(
+                options=labels, multiple=True, custom_value=True, mode=sel.SelectSelectorMode.DROPDOWN,
+            )),
+            labels,
         )
         color_key, color_section = _group("color", {
             red: red_sel, green: green_sel, blue: blue_sel,
@@ -275,7 +302,7 @@ class _Fields:
         })
         bright_key, bright_section = _group("brightness_level", {brightness: brightness_sel, hold_brightness: hold_brightness_sel})
         hours_key, hours_section = _group("active_hours", {
-            use_hours: use_hours_sel, hours_from: hours_from_sel, hours_until: hours_until_sel,
+            use_hours: use_hours_sel, windows_key: windows_sel,
         })
         night_key, night_section = _group("night_mode", {
             night: night_sel, start: start_sel, end: end_sel, still: still_sel,
@@ -345,8 +372,9 @@ class _Fields:
             errors["brightness"] = "bad_brightness"
         night = user_input.get("night") is True
         active_hours = user_input.get("active_hours") is True
-        active_start = _hhmm(user_input.get("active_start")) or ""
-        active_end = _hhmm(user_input.get("active_end")) or ""
+        active_windows, windows_bad = windows_input(user_input.get("active_windows"))
+        if windows_bad:
+            errors["active_windows"] = "bad_active_window"
         start = _hhmm(user_input.get("night_start")) or "02:00"
         end = _hhmm(user_input.get("night_end")) or "06:00"
         still = _timeout(user_input.get("night_still"))
@@ -367,7 +395,7 @@ class _Fields:
             "hold_color": user_input.get("hold_color") is True,
             "hold_brightness": user_input.get("hold_brightness") is True,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
-            "active_hours": active_hours, "active_start": active_start, "active_end": active_end,
+            "active_hours": active_hours, "active_windows": active_windows,
         }, {}
 
     def _store(self, parsed: dict) -> str:

@@ -401,6 +401,85 @@ def test_active_hours_switch_off_ignores_a_filled_overnight_window():
     assert apply_at(10, 0, active_hours=True) == "wait"
 
 
+def test_two_windows_the_second_one_turns_the_lamp_on_and_takes_a_shared_lamp():
+    """19:00 sits in 18:00–20:00 and not in 09:00–10:00. That second window is enough."""
+    from datetime import datetime
+
+    def at(hour, minute):
+        return lambda: datetime(2026, 11, 20, hour, minute)
+
+    windows = [{"start": "09:00", "end": "10:00"}, {"start": "18:00", "end": "20:00"}]
+
+    def one(hour, minute, **extra):
+        home = Home()
+        home.states.set("binary_sensor.p", "on")
+        home.states.set("light.desk", "off")
+        zone = {
+            "key": "desk",
+            "name": "Desk",
+            "lamps": ["light.desk"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "active_hours": True,
+            "active_windows": windows,
+        }
+        zone.update(extra)
+        mgr = AdaptiveLightManager(home, {"version": 5, "zones": [zone]}, now=home.now, local_now=at(hour, minute))
+        return home, mgr, run(mgr.apply("desk"))
+
+    home, mgr, result = one(19, 0)
+    assert result == "on"
+    assert mgr.cfg.zones["desk"]["active_windows"] == windows
+    assert ("light", "turn_on", {"entity_id": ["light.desk"]}) in home.services.calls
+    assert one(9, 30)[2] == "on"
+    home, _mgr, result = one(12, 0)
+    assert result == "wait"
+    assert home.services.calls == []
+    assert one(12, 0, active_hours=False)[2] == "on"
+    assert one(12, 0, active_windows=[])[2] == "on"
+    overnight = [{"start": "09:00", "end": "10:00"}, {"start": "22:00", "end": "06:00"}]
+    assert one(23, 30, active_windows=overnight)[2] == "on"
+    assert one(12, 0, active_windows=overnight)[2] == "wait"
+
+    lamp = "light.shared"
+    def shared(hour, minute):
+        home = Home()
+        home.states.set("binary_sensor.room", "on")
+        home.states.set("binary_sensor.desk", "on")
+        home.states.set(lamp, "off")
+        mgr = AdaptiveLightManager(home, {"version": 5, "zones": [
+            {
+                "key": "living",
+                "name": "Living",
+                "lamps": [lamp],
+                "presence": ["binary_sensor.room"],
+                "off_timeout": 30,
+                "threshold": 0,
+                "priority": 0,
+            },
+            {
+                "key": "desk",
+                "name": "Desk",
+                "lamps": [lamp],
+                "presence": ["binary_sensor.desk"],
+                "off_timeout": 30,
+                "threshold": 0,
+                "priority": 1,
+                "active_hours": True,
+                "active_windows": windows,
+            },
+        ]}, now=home.now, local_now=at(hour, minute))
+        return mgr
+
+    inside = shared(19, 0)
+    assert run(inside.apply("desk")) == "on"
+    assert inside._owner_of(lamp)[1] == "desk"
+    outside = shared(12, 0)
+    assert run(outside.apply("desk")) == "wait"
+    assert outside._owner_of(lamp)[1] == "living"
+
+
 def test_one_hold_color_sends_rgb_when_any_box_is_set_and_kelvin_otherwise():
     from adaptive_light.manager import _service_color
 
@@ -448,6 +527,12 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
         assert "color_temp" in sections["color"]["data"] and "color_r" in sections["color"]["data"]
         assert sections["active_hours"]["data"]["active_hours"] == "Use these hours"
         assert translated["active_hours"]["data"]["active_hours"] == "Использовать эти часы"
+        assert sections["active_hours"]["data"]["active_windows"] == "Windows"
+        assert translated["active_hours"]["data"]["active_windows"] == "Окна"
+        assert "active_start" not in sections["active_hours"]["data"]
         assert sections["active_hours"]["data_description"]["active_hours"]
         assert translated["active_hours"]["data_description"]["active_hours"]
         assert sections["active_hours"]["data_description"]["active_hours"] != translated["active_hours"]["data_description"]["active_hours"]
+        assert sections["active_hours"]["data_description"]["active_windows"]
+        assert translated["active_hours"]["data_description"]["active_windows"]
+        assert sections["active_hours"]["data_description"]["active_windows"] != translated["active_hours"]["data_description"]["active_windows"]

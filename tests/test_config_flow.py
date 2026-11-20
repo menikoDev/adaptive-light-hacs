@@ -27,7 +27,7 @@ from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
 FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "off_timeout", "color", "brightness_level", "active_hours", "night_mode"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still", "active_hours", "active_start", "active_end"}
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still", "active_hours", "active_windows"}
 
 
 def run(coro):
@@ -219,8 +219,10 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         assert hours["active_hours"][1].selector_type == "boolean"
         assert type(hours["active_hours"][0]) is vol.Required
         assert (hours["active_hours"][0].description or {}).get("suggested_value") is False
-        assert hours["active_start"][1].selector_type == "time"
-        assert hours["active_end"][1].selector_type == "time"
+        assert type(hours["active_windows"][0]) is vol.Optional
+        assert hours["active_windows"][1].selector_type == "select"
+        assert hours["active_windows"][1].config["multiple"] is True
+        assert hours["active_windows"][1].config["custom_value"] is True
 
     opened = sub(Options(cfg), "init")
     assert opened["type"] == "form" and opened["step_id"] == "zone" and "menu_options" not in opened

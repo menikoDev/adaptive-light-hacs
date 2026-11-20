@@ -286,15 +286,18 @@ class AdaptiveLightManager:
         return self.now() - since < float(self.cfg.zones[zone]["off_timeout"])
 
     def _in_active_hours(self, spec: dict) -> bool:
-        """The switch off, or empty or equal times, means always active. Night mode is a different window."""
+        """The switch off, or an empty list, means always active. Any window is enough, including overnight."""
         if spec.get("active_hours") is not True:
             return True
-        start = spec.get("active_start") or ""
-        end = spec.get("active_end") or ""
-        if not start or not end or start == end:
+        windows = spec.get("active_windows") or []
+        if not windows:
             return True
         hour, minute = self._clock()
-        return in_night_window(hour, minute, start, end)
+        return any(
+            in_night_window(hour, minute, window.get("start") or "", window.get("end") or "")
+            for window in windows
+            if isinstance(window, dict)
+        )
 
     def is_active(self, zone: str) -> bool:
         """Enabled, inside its hours, and presence, a running off timeout, night hold, or a lux hold."""
