@@ -36,6 +36,27 @@ def _priority(value: Any) -> int:
     return number if number > 0 else 0
 
 
+def rgb_channels(red: Any, green: Any, blue: Any) -> list[int] | str | None:
+    """'' when every box is empty. A filled box makes the empty ones 0. None when a box is not 0–255."""
+    raw = (red, green, blue)
+    if all(part in (None, "") for part in raw):
+        return ""
+    out: list[int] = []
+    for part in raw:
+        if part in (None, ""):
+            out.append(0)
+            continue
+        if isinstance(part, bool) or not isinstance(part, (int, float)):
+            return None
+        if isinstance(part, float) and not part.is_integer():
+            return None
+        number = int(part)
+        if number < 0 or number > 255:
+            return None
+        out.append(number)
+    return out
+
+
 def _color(value: Any) -> str | list[int]:
     """Empty when the zone does not choose a color. A name or an RGB triple otherwise."""
     if isinstance(value, str):

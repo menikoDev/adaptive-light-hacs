@@ -759,14 +759,17 @@ def _color_matches(hass, entity: str, fields: dict) -> bool:
 
 
 def _service_color(spec: dict) -> dict[str, Any]:
-    """Held color and brightness for turn_on. Kelvin wins over RGB. Unchecked sends nothing."""
+    """Held color and brightness for turn_on. RGB wins. Kelvin is used when RGB is empty."""
     data: dict[str, Any] = {}
     if spec.get("hold_color") is True:
-        kelvin = spec.get("color_temp")
-        if isinstance(kelvin, int) and not isinstance(kelvin, bool):
-            data["color_temp_kelvin"] = kelvin
+        # A chosen RGB is the color. Kelvin is only used when red, green, and blue are all empty.
+        chosen = _color_data(spec.get("color"))
+        if chosen:
+            data.update(chosen)
         else:
-            data.update(_color_data(spec.get("color")))
+            kelvin = spec.get("color_temp")
+            if isinstance(kelvin, int) and not isinstance(kelvin, bool):
+                data["color_temp_kelvin"] = kelvin
     if spec.get("hold_brightness") is True:
         bright = spec.get("brightness")
         if isinstance(bright, int) and not isinstance(bright, bool):

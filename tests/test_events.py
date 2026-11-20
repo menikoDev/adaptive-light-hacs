@@ -117,7 +117,7 @@ def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
             "lux": "sensor.living_room_lux",
             "threshold": 50,
             "window": 10,
-            "color": [255, 0, 0],
+            "color": "",
             "color_temp": 2700,
             "hold_color": True,
         }],
@@ -171,7 +171,7 @@ def test_threshold_zero_sends_kelvin_and_holds_it_after_another_integration_repa
             "off_timeout": 30,
             "threshold": 0,
             "window": 10,
-            "color": [255, 0, 0],
+            "color": "",
             "color_temp": 4003,
             "brightness": 246,
             "hold_color": True,
@@ -227,6 +227,12 @@ def test_hold_color_and_hold_brightness_call_adaptive_lighting_for_that_part_onl
     color_only = run_zone(hold_color=True, hold_brightness=False)
     assert color_only.services.calls == [
         ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": "color"}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "rgb_color": [20, 180, 60]}),
+    ]
+
+    kelvin_only = run_zone(hold_color=True, hold_brightness=False, color="")
+    assert kelvin_only.services.calls == [
+        ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": "color"}),
         ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003}),
     ]
 
@@ -239,8 +245,8 @@ def test_hold_color_and_hold_brightness_call_adaptive_lighting_for_that_part_onl
     both = run_zone(hold_color=True, hold_brightness=True)
     assert both.services.calls[:3] == [
         ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": True}),
-        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003, "brightness": 246}),
-        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "rgb_color": [20, 180, 60], "brightness": 246}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "rgb_color": [20, 180, 60]}),
     ]
 
     neither = run_zone(hold_color=False, hold_brightness=False)
@@ -252,6 +258,12 @@ def test_hold_color_and_hold_brightness_call_adaptive_lighting_for_that_part_onl
 
 
 def test_hold_color_with_rgb_green_turns_the_lamp_green():
+    """Red 0, green 255, blue 0 is the color he types. Kelvin on the same zone does not replace it."""
+    from adaptive_light.model import rgb_channels
+
+    assert rgb_channels(0, 255, 0) == [0, 255, 0]
+    assert rgb_channels(None, 255, None) == [0, 255, 0]
+    assert rgb_channels("", "", "") == ""
     home = Home()
     home.services._available.add(("adaptive_lighting", "set_manual_control"))
     home.states.set("binary_sensor.p", "on")
@@ -265,11 +277,14 @@ def test_hold_color_with_rgb_green_turns_the_lamp_green():
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
             "threshold": 0,
-            "color": [0, 255, 0],
+            "color": rgb_channels(0, 255, 0),
+            "color_temp": 4003,
             "hold_color": True,
         }],
     }, now=home.now)
     assert run(mgr.apply("desk")) == "on"
+    assert ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": "color"}) in home.services.calls
     turned = [call for call in home.services.calls if call[0] == "light" and call[1] == "turn_on"]
     assert turned
     assert all(call[2].get("rgb_color") == [0, 255, 0] for call in turned)
+    assert all("color_temp_kelvin" not in call[2] for call in turned)

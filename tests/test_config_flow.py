@@ -26,7 +26,7 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "hold_color", "brightness", "hold_brightness", "off_timeout", "night", "night_start", "night_end", "night_still"]
+FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "color_r", "color_g", "color_b", "color_temp", "hold_color", "brightness", "hold_brightness", "off_timeout", "night", "night_start", "night_end", "night_still"]
 ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
@@ -175,15 +175,18 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     create = _schema_fields(sub(Wizard(), "zone"))
     options = _schema_fields(sub(Options(cfg), "zone"))
     for fields in (create, options):
-        color_key, color_sel = fields["color"]
+        assert "color" not in fields
+        for channel in ("color_r", "color_g", "color_b"):
+            channel_key, channel_sel = fields[channel]
+            assert type(channel_key) is vol.Optional
+            assert channel_sel.selector_type == "number" and channel_sel.config["mode"] == "box"
+            assert channel_sel.config["min"] == 0 and channel_sel.config["max"] == 255
         kelvin_key, kelvin_sel = fields["color_temp"]
         bright_key, bright_sel = fields["brightness"]
-        assert type(color_key) is vol.Optional and type(kelvin_key) is vol.Optional and type(bright_key) is vol.Optional
-        assert color_sel.selector_type == "color_rgb"
+        assert type(kelvin_key) is vol.Optional and type(bright_key) is vol.Optional
         assert kelvin_sel.selector_type == "color_temp" and kelvin_sel.config["unit"] == "kelvin"
         assert kelvin_sel.config["min"] == 1000 and kelvin_sel.config["max"] == 10000
         assert bright_sel.selector_type == "number" and bright_sel.config["mode"] == "slider"
-        assert not (color_key.description or {}).get("suggested_value")
         assert not (kelvin_key.description or {}).get("suggested_value")
         assert (bright_key.description or {}).get("suggested_value") in (None, "")
         assert type(fields["priority"][0]) is vol.Required
@@ -212,7 +215,9 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     paths = [
         ("options", "step", "zone", "title"),
         ("options", "step", "zone", "data", "priority"),
-        ("options", "step", "zone", "data", "color"),
+        ("options", "step", "zone", "data", "color_r"),
+        ("options", "step", "zone", "data", "color_g"),
+        ("options", "step", "zone", "data", "color_b"),
         ("options", "step", "zone", "data", "color_temp"),
         ("options", "step", "zone", "data", "brightness"),
         ("options", "step", "zone", "data", "hold_color"),
@@ -220,7 +225,9 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         ("config", "step", "user", "menu_options", "zone"),
         ("config", "step", "user", "menu_options", "outdoor"),
         ("config", "step", "zone", "data", "priority"),
-        ("config", "step", "zone", "data", "color"),
+        ("config", "step", "zone", "data", "color_r"),
+        ("config", "step", "zone", "data", "color_g"),
+        ("config", "step", "zone", "data", "color_b"),
         ("config", "step", "zone", "data", "color_temp"),
         ("config", "step", "zone", "data", "brightness"),
         ("config", "step", "zone", "data", "hold_color"),
@@ -237,7 +244,12 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         russian[".".join(path)] = translated
     assert russian["options.step.zone.title"] == "Зона"
     assert russian["options.step.zone.data.priority"] == "Приоритет"
-    assert russian["options.step.zone.data.color"] == "Цвет"
+    assert russian["options.step.zone.data.color_r"] == "Красный"
+    assert russian["options.step.zone.data.color_g"] == "Зелёный"
+    assert russian["options.step.zone.data.color_b"] == "Синий"
+    assert en["options"]["step"]["zone"]["data"]["hold_color"] == "Hold color"
+    assert en["options"]["step"]["zone"]["data"]["hold_brightness"] == "Hold brightness"
+    assert en["options"]["step"]["zone"]["data"]["color_r"] == "Red"
     assert russian["options.step.zone.data.color_temp"] == "Цветовая температура, К"
     assert russian["options.step.zone.data.brightness"] == "Яркость"
     assert russian["options.step.zone.data.hold_color"] == "Удерживать цвет"
@@ -251,7 +263,7 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     assert zone["hold_color"] is False and zone["hold_brightness"] is False
     picked = sub(Wizard(), "zone", {
         **_fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"]),
-        "color": [9, 8, 7], "brightness": 40, "hold_color": True, "hold_brightness": True,
+        "color_r": 9, "color_g": 8, "color_b": 7, "brightness": 40, "hold_color": True, "hold_brightness": True,
     })
     chosen = picked["data"]["config"]["zones"][0]
     assert chosen["color"] == [9, 8, 7] and chosen["brightness"] == 40

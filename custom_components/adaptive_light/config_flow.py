@@ -12,7 +12,7 @@ from homeassistant.helpers import selector as sel
 from homeassistant.util import slugify
 
 from .const import CONF_CONFIG, DOMAIN
-from .model import empty_config, normalise, outdoor_block, unique_key, validate
+from .model import empty_config, normalise, outdoor_block, rgb_channels, unique_key, validate
 from .momentary import keep_section, parse_actions, write_action
 
 # Schema keys are the translation keys. The visible words live in strings.json
@@ -59,31 +59,17 @@ def _priority_input(value: Any) -> int:
     return number if number > 0 else 0
 
 
-def _rgb_value(value: Any) -> list[int] | None:
-    """Only an RGB triple can prefill the color picker. A name is not a default color."""
-    if isinstance(value, (list, tuple)) and _color_input(value):
-        return [int(part) for part in value]
-    return None
-
-
-def _color_input(value: Any) -> str | list[int] | None:
-    """Empty stays empty. A picker value is red, green, blue. A stored name is kept only if submitted."""
-    if value in (None, "", []):
-        return ""
-    if isinstance(value, str):
-        return value.strip()
-    if isinstance(value, (list, tuple)) and len(value) == 3 and not any(isinstance(part, bool) for part in value):
-        rgb: list[int] = []
-        for part in value:
-            if isinstance(part, bool) or not isinstance(part, (int, float)):
-                return None
-            if isinstance(part, float) and not part.is_integer():
-                return None
-            number = int(part)
-            if number < 0 or number > 255:
-                return None
-            rgb.append(number)
-        return rgb
+def _stored_channel(color: Any, index: int) -> int | None:
+    """Prefill one box from a stored RGB triple. A color name has no number to show."""
+    if isinstance(color, (list, tuple)) and len(color) == 3:
+        part = color[index]
+        if isinstance(part, bool) or not isinstance(part, (int, float)):
+            return None
+        if isinstance(part, float) and not part.is_integer():
+            return None
+        number = int(part)
+        if 0 <= number <= 255:
+            return number
     return None
 
 
@@ -203,7 +189,22 @@ class _Fields:
             )),
             current.get("priority", 0),
         )
-        color, color_sel = self._optional("color", sel.ColorRGBSelector(), _rgb_value(current.get("color")))
+        stored = current.get("color")
+        red, red_sel = self._optional(
+            "color_r",
+            sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=255, step=1, mode=sel.NumberSelectorMode.BOX)),
+            _stored_channel(stored, 0),
+        )
+        green, green_sel = self._optional(
+            "color_g",
+            sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=255, step=1, mode=sel.NumberSelectorMode.BOX)),
+            _stored_channel(stored, 1),
+        )
+        blue, blue_sel = self._optional(
+            "color_b",
+            sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=255, step=1, mode=sel.NumberSelectorMode.BOX)),
+            _stored_channel(stored, 2),
+        )
         color_temp, color_temp_sel = self._optional(
             "color_temp",
             sel.ColorTempSelector(sel.ColorTempSelectorConfig(
@@ -241,7 +242,8 @@ class _Fields:
         )
         return vol.Schema({
             name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, window: window_sel,
-            priority: priority_sel, color: color_sel, color_temp: color_temp_sel, hold_color: hold_color_sel,
+            priority: priority_sel, red: red_sel, green: green_sel, blue: blue_sel,
+            color_temp: color_temp_sel, hold_color: hold_color_sel,
             brightness: brightness_sel, hold_brightness: hold_brightness_sel,
             timeout: timeout_sel, night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
@@ -284,9 +286,16 @@ class _Fields:
             if window is None or window < 1:
                 errors["window"] = "bad_window"
         priority = _priority_input(user_input.get("priority") if "priority" in user_input else None)
-        color = _color_input(user_input.get("color") if "color" in user_input else None)
+        color = rgb_channels(
+            user_input.get("color_r") if "color_r" in user_input else None,
+            user_input.get("color_g") if "color_g" in user_input else None,
+            user_input.get("color_b") if "color_b" in user_input else None,
+        )
         if color is None:
-            errors["color"] = "bad_color"
+            errors["color_r"] = "bad_color"
+            errors["color_g"] = "bad_color"
+            errors["color_b"] = "bad_color"
+            color = ""
         color_temp = _color_temp_input(user_input.get("color_temp") if "color_temp" in user_input else None)
         if color_temp is False:
             errors["color_temp"] = "bad_color_temp"

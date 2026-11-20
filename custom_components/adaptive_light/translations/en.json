@@ -15,7 +15,7 @@
       "bad_threshold": "Enter the upper threshold in lux",
       "bad_window": "Enter the window in minutes",
       "bad_brightness": "Enter a brightness from 0 to 255",
-      "bad_color": "Choose a color",
+      "bad_color": "Enter red, green, and blue from 0 to 255",
       "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more"
     },
@@ -33,7 +33,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Hold color sends the chosen kelvin, or else the RGB color, and tells Adaptive Lighting not to change the color. Hold brightness does the same for brightness. An unchecked box is not sent and is left to Adaptive Lighting. An empty color with Hold color checked still does not call Adaptive Lighting. While the zone keeps the lamp on, a held value is sent again if the lamp changes. Another zone is added as another entry.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Type red, green, and blue from 0 to 255. An empty box is 0 when another box is filled. Hold color sends that RGB, or kelvin when all three boxes are empty, and tells Adaptive Lighting not to change the color. Hold brightness does the same for brightness. An unchecked box is not sent and is left to Adaptive Lighting. Empty red, green, blue, and kelvin with Hold color checked still does not call Adaptive Lighting. While the zone keeps the lamp on, a held value is sent again if the lamp changes. Another zone is added as another entry.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -42,7 +42,9 @@
           "threshold": "Threshold, lx",
           "window": "Window, min",
           "priority": "Priority",
-          "color": "Color",
+          "color_r": "Red",
+          "color_g": "Green",
+          "color_b": "Blue",
           "color_temp": "Color temperature, K",
           "hold_color": "Hold color",
           "brightness": "Brightness",
@@ -91,14 +93,14 @@
       "bad_threshold": "Enter the upper threshold in lux",
       "bad_window": "Enter the window in minutes",
       "bad_brightness": "Enter a brightness from 0 to 255",
-      "bad_color": "Choose a color",
+      "bad_color": "Enter red, green, and blue from 0 to 255",
       "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more"
     },
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Hold color sends the chosen kelvin, or else the RGB color, and tells Adaptive Lighting not to change the color. Hold brightness does the same for brightness. An unchecked box is not sent and is left to Adaptive Lighting. An empty color with Hold color checked still does not call Adaptive Lighting. While the zone keeps the lamp on, a held value is sent again if the lamp changes.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Type red, green, and blue from 0 to 255. An empty box is 0 when another box is filled. Hold color sends that RGB, or kelvin when all three boxes are empty, and tells Adaptive Lighting not to change the color. Hold brightness does the same for brightness. An unchecked box is not sent and is left to Adaptive Lighting. Empty red, green, blue, and kelvin with Hold color checked still does not call Adaptive Lighting. While the zone keeps the lamp on, a held value is sent again if the lamp changes.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -107,7 +109,9 @@
           "threshold": "Threshold, lx",
           "window": "Window, min",
           "priority": "Priority",
-          "color": "Color",
+          "color_r": "Red",
+          "color_g": "Green",
+          "color_b": "Blue",
           "color_temp": "Color temperature, K",
           "hold_color": "Hold color",
           "brightness": "Brightness",
