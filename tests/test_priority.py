@@ -347,3 +347,78 @@ def test_an_idle_higher_zone_does_not_steal_a_shared_lamp_when_lux_changes():
     assert not mgr.is_active("fridge")
     assert _calls(home, lamp) == []
     assert not any("reason=owner" in line and "new=fridge" in line for line in cap.lines)
+
+
+def test_releasing_the_beam_returns_the_ceiling_lamp_to_the_living_room_color():
+    """The table zone holds blue. After it lets go, the living room does not keep that RGB.
+
+    work_station_zone is the desk and does not own this ceiling lamp.
+    """
+    home = Home()
+    home.services._available.add(("adaptive_lighting", "set_manual_control"))
+    top_left = "light.living_room_top_lamp_top_left"
+    top_right = "light.living_room_top_lamp_top_right"
+    bottom = "light.living_room_top_lamp_bottom"
+    blue = [0, 0, 255]
+    home.states.set("binary_sensor.room", "on")
+    home.states.set("binary_sensor.table", "on")
+    home.states.set("binary_sensor.desk", "on")
+    for lamp in (top_left, top_right, bottom, "light.desk"):
+        home.states.set(lamp, "off")
+    mgr = _mgr(home, [
+        {
+            "key": "living_room_zone",
+            "name": "Living Room",
+            "lamps": [top_left, top_right, bottom],
+            "presence": ["binary_sensor.room"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "window": 10,
+            "priority": 0,
+            "color": "",
+            "hold_color": False,
+            "hold_brightness": False,
+        },
+        {
+            "key": "light_beem_for_work_station",
+            "name": "Light Beem For Work Station",
+            "lamps": [top_left],
+            "presence": ["binary_sensor.table"],
+            "off_timeout": 10,
+            "threshold": 0,
+            "window": 10,
+            "priority": 1,
+            "color": blue,
+            "hold_color": True,
+        },
+        {
+            "key": "work_station_zone",
+            "name": "Work Station",
+            "lamps": ["light.desk"],
+            "presence": ["binary_sensor.desk"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "priority": 2,
+            "color": [255, 0, 0],
+            "hold_color": True,
+        },
+    ])
+    run(mgr.apply("living_room_zone"))
+    run(mgr.apply("light_beem_for_work_station"))
+    assert mgr._owner_of(top_left)[1] == "light_beem_for_work_station"
+    assert ("adaptive_lighting", "set_manual_control", {"lights": [top_left], "manual_control": "color"}) in home.services.calls
+    assert any(call[2].get("rgb_color") == blue for call in _calls(home, top_left))
+    home.states.set(top_left, "on")
+
+    home.t = 0
+    home.states.set("binary_sensor.table", "off")
+    assert run(mgr.apply("light_beem_for_work_station")) == "wait"
+    assert mgr._owner_of(top_left)[1] == "light_beem_for_work_station"
+    home.services.calls.clear()
+    home.t = 10
+    run(mgr.apply("light_beem_for_work_station"))
+    assert mgr._owner_of(top_left)[1] == "living_room_zone"
+    assert mgr._owner_of("light.desk")[1] == "work_station_zone"
+    assert ("adaptive_lighting", "set_manual_control", {"lights": [top_left], "manual_control": False}) in home.services.calls
+    assert all(call[2].get("rgb_color") != blue for call in _calls(home, top_left))
+    assert all("rgb_color" not in call[2] and "color_temp_kelvin" not in call[2] and "color_name" not in call[2] for call in _calls(home, top_left))

@@ -304,6 +304,15 @@ class AdaptiveLightManager:
         _rank, zone, mgr, _active = pool[0]
         return mgr, zone
 
+    def _zone_spec(self, ident) -> dict | None:
+        if not isinstance(ident, tuple) or len(ident) != 2:
+            return None
+        mgr_id, zone = ident
+        for mgr in self._peers():
+            if id(mgr) == mgr_id:
+                return mgr.cfg.zones.get(zone)
+        return None
+
     def _owns(self, zone: str, lamp: str) -> bool:
         found = self._owner_of(lamp)
         return found is not None and found[0] is self and found[1] == zone
@@ -325,6 +334,15 @@ class AdaptiveLightManager:
             new = ident[1] if ident is not None else "-"
             if old != new:
                 self._emit(new if new != "-" else old, lamp, old, new, "owner")
+            # The zone that let go may have locked the color in Adaptive Lighting.
+            # The zone that receives the lamp does not hold color, so that lock has
+            # to come off. Otherwise the lamp stays the previous RGB.
+            if (
+                found is not None
+                and _sends_color(self._zone_spec(prev))
+                and not _sends_color(found[0].cfg.zones.get(found[1]))
+            ):
+                await self._mark_adaptive_lighting([lamp], False)
             if found is None or (found[0] is self and found[1] == zone):
                 continue
             if found[0] is self:
@@ -775,6 +793,14 @@ def _service_color(spec: dict) -> dict[str, Any]:
         if isinstance(bright, int) and not isinstance(bright, bool):
             data["brightness"] = bright
     return data
+
+
+def _sends_color(spec: dict | None) -> bool:
+    """True when this zone would send an RGB, a color name, or kelvin."""
+    if not spec:
+        return False
+    fields = _service_color(spec)
+    return any(key in fields for key in ("rgb_color", "color_name", "color_temp_kelvin"))
 
 
 def _manual_control(fields: dict) -> bool | str | None:
