@@ -1,10 +1,10 @@
-![Adaptive Light](custom_components/adaptive_light/icon.png)
+![Adaptive Light](custom_components/adaptive_light/brand/icon.png)
 
 # Adaptive Light (HACS)
 
 [![Открыть в Home Assistant и добавить репозиторий в HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=menikoDev&repository=adaptive-light-hacs&category=integration)
 
-Интеграция включает и выключает лампы по присутствию. Если зона задала цветовую температуру, `light.turn_on` получает `color_temp_kelvin`. Если кельвины пустые, а цвет RGB задан, уходит `rgb_color`. Яркость уходит, только если задана. Пустые поля оставляют цвет и яркость Adaptive Lighting: вызов тогда только с `entity_id`. Adaptive Lighting эта интеграция не вызывает.
+Интеграция включает и выключает лампы по присутствию. Если зона задала цветовую температуру, `light.turn_on` получает `color_temp_kelvin`. Если кельвины пустые, а цвет RGB задан, уходит `rgb_color`. Яркость уходит, только если задана. Когда заданы и яркость, и цвет, цвет уходит ещё одним вызовом следом: так лампа не остаётся без цвета. Пока зона держит лампу включённой, тот же цвет уходит снова, если лампу перекрасили. Если установлен Adaptive Lighting, такая лампа помечается ручным управлением, чтобы её не перекрасили в белый. Пустые поля оставляют цвет и яркость Adaptive Lighting: вызов тогда только с `entity_id`, и Adaptive Lighting не вызывается.
 
 ## Установка через HACS
 

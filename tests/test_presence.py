@@ -7,8 +7,10 @@ from adaptive_light.model import normalise
 
 
 class _State:
-    def __init__(self, state):
+    def __init__(self, state, attributes=None, context=None):
         self.state = state
+        self.attributes = attributes or {}
+        self.context = context
 
 
 class _States:
@@ -18,13 +20,17 @@ class _States:
     def get(self, entity):
         return self._data.get(entity)
 
-    def set(self, entity, state):
-        self._data[entity] = _State(state)
+    def set(self, entity, state, attributes=None, context=None):
+        self._data[entity] = _State(state, attributes, context)
 
 
 class _Services:
     def __init__(self):
         self.calls = []
+        self._available: set[tuple[str, str]] = set()
+
+    def has_service(self, domain, service):
+        return (domain, service) in self._available
 
     async def async_call(self, domain, service, data, **kwargs):
         self.calls.append((domain, service, dict(data)))

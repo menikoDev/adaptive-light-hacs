@@ -44,6 +44,7 @@ class AdaptiveLightManager:
         self._released: set[str] = set()
         self._apply_stack: set[str] = set()
         self._again: set[str] = set()
+        self._hold_sent: dict[str, float] = {}
         self._lamps = {entity for spec in self.cfg.zones.values() for entity in spec["lamps"]}
         self._remember_lamps()
         self._listeners: list[Callable[[], None]] = []
@@ -400,8 +401,23 @@ class AdaptiveLightManager:
                     mgr._expect[entity] = want
         context = self._own_context()
         kwargs = {"context": context} if context is not None else {}
+        if want == "on" and color_fields:
+            # Mark the lamps before turn_on. Adaptive Lighting adapts an off→on
+            # event and would otherwise replace this color with its own white.
+            await self._mark_adaptive_lighting(need, True)
         data: dict[str, Any] = {"entity_id": need, **color_fields}
         await self.hass.services.async_call("light", _SERVICE[want], data, **kwargs)
+        if want == "on" and "brightness" in color_fields:
+            # A combined brightness and color call is dropped by some lamps: the
+            # light turns on, and the color never lands. Color goes last.
+            color_only = {key: value for key, value in color_fields.items() if key != "brightness"}
+            if color_only:
+                await self.hass.services.async_call(
+                    "light", "turn_on", {"entity_id": need, **color_only}, **kwargs
+                )
+        if want == "off":
+            released = [entity for entity in need if self._lamp_state(entity) == "off"]
+            await self._mark_adaptive_lighting(released, False)
 
     def _own_context(self):
         try:
@@ -610,7 +626,13 @@ class AdaptiveLightManager:
         entity = event.data.get("entity_id")
         new = event.data.get("new_state")
         if entity in self._lamps and new is not None:
-            self.note_lamp_change(entity, new.state, caused_by_us=self._caused_by_us(new))
+            state = getattr(new, "state", None)
+            caused = self._caused_by_us(new)
+            self.note_lamp_change(entity, state, caused_by_us=caused)
+            if state == "off" and caused:
+                await self._mark_adaptive_lighting([entity], False)
+            elif state == "on" and not caused:
+                await self._rehold(entity)
         radiation, _factor = controller_outdoor(self.hass)
         for zone, spec in self.cfg.zones.items():
             if entity in spec["presence"] or entity == spec.get("lux") or (radiation and entity == radiation):
@@ -650,11 +672,75 @@ class AdaptiveLightManager:
         if self.store is not None:
             await self.store.async_save(self._snapshot())
 
+    async def _mark_adaptive_lighting(self, lamps: list[str], manual: bool) -> None:
+        """Tell Adaptive Lighting to leave these lamps alone, or to take them back.
+
+        A zone with no color still does not call Adaptive Lighting. Clearing manual
+        control happens only after the lamp is already off, so that service cannot
+        turn it back on.
+        """
+        if not lamps:
+            return
+        services = getattr(self.hass, "services", None)
+        has = getattr(services, "has_service", None)
+        if not callable(has) or not has("adaptive_lighting", "set_manual_control"):
+            return
+        try:
+            await services.async_call(
+                "adaptive_lighting",
+                "set_manual_control",
+                {"lights": list(lamps), "manual_control": manual},
+            )
+        except Exception:
+            return
+
+    async def _rehold(self, entity: str) -> None:
+        """Send the zone color again when something else repaints a lamp we still want on."""
+        found = self._owner_of(entity)
+        if found is None or found[0] is not self:
+            return
+        _mgr, zone = found
+        if zone not in self.cfg.zones or not self.is_active(zone):
+            return
+        fields = _service_color(self.cfg.zones[zone])
+        if not fields or _color_matches(self.hass, entity, fields):
+            return
+        last = self._hold_sent.get(entity)
+        if last is not None and self.now() - last < 1:
+            return
+        self._hold_sent[entity] = self.now()
+        await self.apply(zone)
+
 
 def _logged_number(value):
     if isinstance(value, float) and value.is_integer():
         return int(value)
     return value
+
+
+def _color_matches(hass, entity: str, fields: dict) -> bool:
+    """True when the lamp already shows the color and brightness we would send."""
+    state = hass.states.get(entity)
+    attrs = getattr(state, "attributes", None) or {}
+    if "color_temp_kelvin" in fields:
+        current = attrs.get("color_temp_kelvin")
+        if not isinstance(current, (int, float)) or isinstance(current, bool):
+            return False
+        if int(current) != int(fields["color_temp_kelvin"]):
+            return False
+    if "rgb_color" in fields:
+        current = attrs.get("rgb_color")
+        if tuple(current or ()) != tuple(fields["rgb_color"]):
+            return False
+    if "color_name" in fields:
+        return False
+    if "brightness" in fields:
+        current = attrs.get("brightness")
+        if not isinstance(current, (int, float)) or isinstance(current, bool):
+            return False
+        if int(current) != int(fields["brightness"]):
+            return False
+    return True
 
 
 def _service_color(spec: dict) -> dict[str, Any]:

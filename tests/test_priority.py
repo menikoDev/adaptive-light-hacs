@@ -77,7 +77,10 @@ def test_activation_gives_the_shared_lamp_to_the_higher_zone():
     finally:
         _stop(log, cap)
     shared = _calls(home, "light.fridge")
-    assert shared == [("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20})]
+    assert shared == [
+        ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20}),
+        ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice"}),
+    ]
     assert all("light.fridge" not in call[2]["entity_id"] or "color_name" in call[2] for call in home.services.calls)
     assert any("reason=owner" in line and "entity=light.fridge" in line and "old=living_room" in line and "new=fridge" in line for line in cap.lines)
 
@@ -134,12 +137,18 @@ def test_color_and_brightness_are_sent_only_when_the_zone_set_them():
     _presence(home, room="off", door="on")
     mgr = _mgr(home, [_room(), _fridge(color="ice", brightness=20)])
     run(mgr.apply("fridge"))
-    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20})]
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20}),
+        ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice"}),
+    ]
 
     home.services.calls.clear()
     home.states.set("light.fridge", "on")
     run(mgr.apply("fridge"))
-    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20})]
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20}),
+        ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice"}),
+    ]
 
     home.services.calls.clear()
     home.states.set("binary_sensor.door", "off")

@@ -1,5 +1,6 @@
 """The event log records state changes and lamp on/off lines."""
 import logging
+import types
 
 from adaptive_light.events import LOGGER_NAME
 from adaptive_light.manager import AdaptiveLightManager
@@ -151,3 +152,44 @@ def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
     }, now=plain_home.now)
     run(plain.apply("living_room"))
     assert plain_home.services.calls == [("light", "turn_on", {"entity_id": ["light.top"]})]
+
+
+def test_threshold_zero_sends_kelvin_and_holds_it_after_another_integration_repaints():
+    """A presence-only zone still sends kelvin, then sends it again if the lamp is painted white."""
+    home = Home()
+    home.services._available.add(("adaptive_lighting", "set_manual_control"))
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.desk", "off")
+    mgr = AdaptiveLightManager(home, {
+        "version": 5,
+        "zones": [{
+            "key": "desk",
+            "name": "Light Beem For Work Station",
+            "lamps": ["light.desk"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "window": 10,
+            "color": [255, 0, 0],
+            "color_temp": 4003,
+            "brightness": 246,
+        }],
+    }, now=home.now)
+    assert run(mgr.apply("desk")) == "on"
+    assert home.services.calls[:3] == [
+        ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": True}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003, "brightness": 246}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003}),
+    ]
+    home.states.set("light.desk", "on", attributes={
+        "color_temp_kelvin": 6500, "rgb_color": (255, 255, 255), "brightness": 255,
+    })
+    run(mgr._on_event(types.SimpleNamespace(data={
+        "entity_id": "light.desk",
+        "new_state": home.states.get("light.desk"),
+    })))
+    assert home.services.calls[-2:] == [
+        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003, "brightness": 246}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003}),
+    ]
+    assert any(call[1] == "set_manual_control" and call[2]["manual_control"] is True for call in home.services.calls[3:])

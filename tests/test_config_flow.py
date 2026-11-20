@@ -246,7 +246,10 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     home.states.set("light.k", "off")
     mgr = AdaptiveLightManager(home, picked["data"]["config"])
     assert run(mgr.apply(chosen["key"])) == "on"
-    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.k"], "rgb_color": [9, 8, 7], "brightness": 40})]
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.k"], "rgb_color": [9, 8, 7], "brightness": 40}),
+        ("light", "turn_on", {"entity_id": ["light.k"], "rgb_color": [9, 8, 7]}),
+    ]
 
 
 def test_the_flow_saves_the_four_fields_and_a_yaml_zone_still_loads():
