@@ -26,8 +26,8 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "off_timeout", "night", "night_start", "night_end", "night_still"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
+FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "hold_color", "brightness", "hold_brightness", "off_timeout", "night", "night_start", "night_end", "night_still"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
 def run(coro):
@@ -193,6 +193,10 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         assert (fields["window"][0].description or {}).get("suggested_value") == 10
         assert fields["off_timeout"][1].selector_type == "number"
         assert fields["night"][1].selector_type == "boolean"
+        assert fields["hold_color"][1].selector_type == "boolean"
+        assert fields["hold_brightness"][1].selector_type == "boolean"
+        assert type(fields["hold_color"][0]) is vol.Required
+        assert type(fields["hold_brightness"][0]) is vol.Required
 
     opened = sub(Options(cfg), "init")
     assert opened["type"] == "form" and opened["step_id"] == "zone" and "menu_options" not in opened
@@ -211,12 +215,16 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         ("options", "step", "zone", "data", "color"),
         ("options", "step", "zone", "data", "color_temp"),
         ("options", "step", "zone", "data", "brightness"),
+        ("options", "step", "zone", "data", "hold_color"),
+        ("options", "step", "zone", "data", "hold_brightness"),
         ("config", "step", "user", "menu_options", "zone"),
         ("config", "step", "user", "menu_options", "outdoor"),
         ("config", "step", "zone", "data", "priority"),
         ("config", "step", "zone", "data", "color"),
         ("config", "step", "zone", "data", "color_temp"),
         ("config", "step", "zone", "data", "brightness"),
+        ("config", "step", "zone", "data", "hold_color"),
+        ("config", "step", "zone", "data", "hold_brightness"),
     ]
     russian = {}
     for path in paths:
@@ -232,15 +240,22 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     assert russian["options.step.zone.data.color"] == "Цвет"
     assert russian["options.step.zone.data.color_temp"] == "Цветовая температура, К"
     assert russian["options.step.zone.data.brightness"] == "Яркость"
+    assert russian["options.step.zone.data.hold_color"] == "Удерживать цвет"
+    assert russian["options.step.zone.data.hold_brightness"] == "Удерживать яркость"
     assert russian["config.step.user.menu_options.zone"] == "Зона"
     assert russian["config.step.user.menu_options.outdoor"] == "Уличный свет"
 
     saved = sub(Wizard(), "zone", _fill())
     zone = saved["data"]["config"]["zones"][0]
     assert zone["color"] == "" and zone["color_temp"] is None and zone["brightness"] is None
-    picked = sub(Wizard(), "zone", {**_fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"]), "color": [9, 8, 7], "brightness": 40})
+    assert zone["hold_color"] is False and zone["hold_brightness"] is False
+    picked = sub(Wizard(), "zone", {
+        **_fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"]),
+        "color": [9, 8, 7], "brightness": 40, "hold_color": True, "hold_brightness": True,
+    })
     chosen = picked["data"]["config"]["zones"][0]
     assert chosen["color"] == [9, 8, 7] and chosen["brightness"] == 40
+    assert chosen["hold_color"] is True and chosen["hold_brightness"] is True
     home = types.SimpleNamespace(states=_States(), services=_Services())
     home.states.set("binary_sensor.k", "on")
     home.states.set("light.k", "off")

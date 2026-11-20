@@ -413,10 +413,11 @@ class AdaptiveLightManager:
                     mgr._expect[entity] = want
         context = self._own_context()
         kwargs = {"context": context} if context is not None else {}
-        if want == "on" and color_fields:
+        manual = _manual_control(color_fields) if want == "on" else None
+        if manual is not None:
             # Mark the lamps before turn_on. Adaptive Lighting adapts an off→on
-            # event and would otherwise replace this color with its own white.
-            await self._mark_adaptive_lighting(need, True)
+            # event and would otherwise replace a held color or brightness.
+            await self._mark_adaptive_lighting(need, manual)
         data: dict[str, Any] = {"entity_id": need, **color_fields}
         await self.hass.services.async_call("light", _SERVICE[want], data, **kwargs)
         if want == "on" and "brightness" in color_fields:
@@ -427,7 +428,7 @@ class AdaptiveLightManager:
                 await self.hass.services.async_call(
                     "light", "turn_on", {"entity_id": need, **color_only}, **kwargs
                 )
-        if want == "off":
+        if want == "off" and _manual_control(_service_color(spec)) is not None:
             released = [entity for entity in need if self._lamp_state(entity) == "off"]
             await self._mark_adaptive_lighting(released, False)
 
@@ -684,12 +685,14 @@ class AdaptiveLightManager:
         if self.store is not None:
             await self.store.async_save(self._snapshot())
 
-    async def _mark_adaptive_lighting(self, lamps: list[str], manual: bool) -> None:
-        """Tell Adaptive Lighting to leave these lamps alone, or to take them back.
+    async def _mark_adaptive_lighting(self, lamps: list[str], manual: bool | str) -> None:
+        """Ask Adaptive Lighting not to adapt one attribute, or to take the lamp back.
 
-        A zone with no color still does not call Adaptive Lighting. Clearing manual
-        control happens only after the lamp is already off, so that service cannot
-        turn it back on.
+        ``manual`` is ``"color"``, ``"brightness"``, or True for both. False clears
+        every mark. A held color that is empty does not reach this method: there is
+        nothing to protect, and the call would force Adaptive Lighting to adapt.
+        Clearing happens only after the lamp is already off, so that service cannot
+        turn it back on. The switch's own settings are left alone.
         """
         if not lamps:
             return
@@ -756,17 +759,37 @@ def _color_matches(hass, entity: str, fields: dict) -> bool:
 
 
 def _service_color(spec: dict) -> dict[str, Any]:
-    """Color and brightness for turn_on. Kelvin wins over RGB. Empty sends neither."""
+    """Held color and brightness for turn_on. Kelvin wins over RGB. Unchecked sends nothing."""
     data: dict[str, Any] = {}
-    kelvin = spec.get("color_temp")
-    if isinstance(kelvin, int) and not isinstance(kelvin, bool):
-        data["color_temp_kelvin"] = kelvin
-    else:
-        data.update(_color_data(spec.get("color")))
-    bright = spec.get("brightness")
-    if isinstance(bright, int) and not isinstance(bright, bool):
-        data["brightness"] = bright
+    if spec.get("hold_color") is True:
+        kelvin = spec.get("color_temp")
+        if isinstance(kelvin, int) and not isinstance(kelvin, bool):
+            data["color_temp_kelvin"] = kelvin
+        else:
+            data.update(_color_data(spec.get("color")))
+    if spec.get("hold_brightness") is True:
+        bright = spec.get("brightness")
+        if isinstance(bright, int) and not isinstance(bright, bool):
+            data["brightness"] = bright
     return data
+
+
+def _manual_control(fields: dict) -> bool | str | None:
+    """Adaptive Lighting ``manual_control`` value for the fields we actually send.
+
+    One call has to carry every mark: a later call replaces the earlier one.
+    True marks both color and brightness. An empty held color adds no field and
+    does not ask Adaptive Lighting to do anything.
+    """
+    color = any(key in fields for key in ("color_temp_kelvin", "rgb_color", "color_name"))
+    bright = "brightness" in fields
+    if color and bright:
+        return True
+    if color:
+        return "color"
+    if bright:
+        return "brightness"
+    return None
 
 
 def _color_data(color: Any) -> dict[str, Any]:

@@ -211,12 +211,18 @@ class _Fields:
             )),
             current.get("color_temp"),
         )
+        hold_color, hold_color_sel = self._field(
+            "hold_color", sel.BooleanSelector(), current.get("hold_color") is True,
+        )
         brightness, brightness_sel = self._optional(
             "brightness",
             sel.NumberSelector(sel.NumberSelectorConfig(
                 min=0, max=255, step=1, mode=sel.NumberSelectorMode.SLIDER,
             )),
             current.get("brightness"),
+        )
+        hold_brightness, hold_brightness_sel = self._field(
+            "hold_brightness", sel.BooleanSelector(), current.get("hold_brightness") is True,
         )
         timeout, timeout_sel = self._field(
             "off_timeout",
@@ -235,7 +241,8 @@ class _Fields:
         )
         return vol.Schema({
             name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, window: window_sel,
-            priority: priority_sel, color: color_sel, color_temp: color_temp_sel, brightness: brightness_sel,
+            priority: priority_sel, color: color_sel, color_temp: color_temp_sel, hold_color: hold_color_sel,
+            brightness: brightness_sel, hold_brightness: hold_brightness_sel,
             timeout: timeout_sel, night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
 
@@ -305,6 +312,8 @@ class _Fields:
             "name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout,
             "lux": lux, "threshold": threshold, "window": window, "priority": priority,
             "color": color, "color_temp": color_temp, "brightness": brightness, "lux_coefficient": coefficient,
+            "hold_color": user_input.get("hold_color") is True,
+            "hold_brightness": user_input.get("hold_brightness") is True,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
         }, {}
 

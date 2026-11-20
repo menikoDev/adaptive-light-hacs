@@ -58,13 +58,17 @@ def test_missing_empty_and_negative_priority_read_as_zero_and_color_stays_empty(
         {"key": "study", "name": "Study", "lamps": ["light.c"], "presence": ["binary_sensor.r"], "off_timeout": 10, "priority": -4},
     ]})
     assert [zone["priority"] for zone in cfg["zones"]] == [0, 0, 0]
-    assert all(zone["color"] == "" and zone["brightness"] is None for zone in cfg["zones"])
+    assert all(
+        zone["color"] == "" and zone["brightness"] is None
+        and zone["hold_color"] is False and zone["hold_brightness"] is False
+        for zone in cfg["zones"]
+    )
 
 
 def test_activation_gives_the_shared_lamp_to_the_higher_zone():
     home = Home()
     _presence(home, room="on", door="off")
-    mgr = _mgr(home, [_room(), _fridge(color="ice", brightness=20)])
+    mgr = _mgr(home, [_room(), _fridge(color="ice", brightness=20, hold_color=True, hold_brightness=True)])
     log, cap = _logger()
     try:
         assert run(mgr.apply("living_room")) == "on"
@@ -135,7 +139,7 @@ def test_equal_priority_uses_the_smaller_key():
 def test_color_and_brightness_are_sent_only_when_the_zone_set_them():
     home = Home()
     _presence(home, room="off", door="on")
-    mgr = _mgr(home, [_room(), _fridge(color="ice", brightness=20)])
+    mgr = _mgr(home, [_room(), _fridge(color="ice", brightness=20, hold_color=True, hold_brightness=True)])
     run(mgr.apply("fridge"))
     assert home.services.calls == [
         ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20}),
@@ -169,7 +173,7 @@ def test_color_and_brightness_are_sent_only_when_the_zone_set_them():
 def test_one_shared_lamp_does_not_take_the_rest_of_the_room():
     home = Home()
     _presence(home, room="on", door="on")
-    mgr = _mgr(home, [_room(), _fridge(color="ice")])
+    mgr = _mgr(home, [_room(), _fridge(color="ice", hold_color=True)])
     run(mgr.apply("living_room"))
     assert ("light", "turn_on", {"entity_id": ["light.ceiling"]}) in home.services.calls
     assert ("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice"}) in home.services.calls

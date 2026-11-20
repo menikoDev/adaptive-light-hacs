@@ -119,6 +119,7 @@ def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
             "window": 10,
             "color": [255, 0, 0],
             "color_temp": 2700,
+            "hold_color": True,
         }],
     }
     mgr = AdaptiveLightManager(home, colored, now=home.now)
@@ -173,6 +174,8 @@ def test_threshold_zero_sends_kelvin_and_holds_it_after_another_integration_repa
             "color": [255, 0, 0],
             "color_temp": 4003,
             "brightness": 246,
+            "hold_color": True,
+            "hold_brightness": True,
         }],
     }, now=home.now)
     assert run(mgr.apply("desk")) == "on"
@@ -193,3 +196,56 @@ def test_threshold_zero_sends_kelvin_and_holds_it_after_another_integration_repa
         ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003}),
     ]
     assert any(call[1] == "set_manual_control" and call[2]["manual_control"] is True for call in home.services.calls[3:])
+
+
+def test_hold_color_and_hold_brightness_call_adaptive_lighting_for_that_part_only():
+    """Checked sends that part and marks it manual. Unchecked sends nothing. Empty color does not call Adaptive Lighting."""
+    def zone(**extra):
+        base = {
+            "key": "desk",
+            "name": "Light Beem For Work Station",
+            "lamps": ["light.desk"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+            "threshold": 0,
+            "color": [20, 180, 60],
+            "color_temp": 4003,
+            "brightness": 246,
+        }
+        base.update(extra)
+        return base
+
+    def run_zone(**extra):
+        home = Home()
+        home.services._available.add(("adaptive_lighting", "set_manual_control"))
+        home.states.set("binary_sensor.p", "on")
+        home.states.set("light.desk", "off")
+        mgr = AdaptiveLightManager(home, {"version": 5, "zones": [zone(**extra)]}, now=home.now)
+        assert run(mgr.apply("desk")) == "on"
+        return home
+
+    color_only = run_zone(hold_color=True, hold_brightness=False)
+    assert color_only.services.calls == [
+        ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": "color"}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003}),
+    ]
+
+    bright_only = run_zone(hold_color=False, hold_brightness=True)
+    assert bright_only.services.calls == [
+        ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": "brightness"}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "brightness": 246}),
+    ]
+
+    both = run_zone(hold_color=True, hold_brightness=True)
+    assert both.services.calls[:3] == [
+        ("adaptive_lighting", "set_manual_control", {"lights": ["light.desk"], "manual_control": True}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003, "brightness": 246}),
+        ("light", "turn_on", {"entity_id": ["light.desk"], "color_temp_kelvin": 4003}),
+    ]
+
+    neither = run_zone(hold_color=False, hold_brightness=False)
+    assert neither.services.calls == [("light", "turn_on", {"entity_id": ["light.desk"]})]
+
+    empty = run_zone(hold_color=True, hold_brightness=False, color="", color_temp=None)
+    assert empty.services.calls == [("light", "turn_on", {"entity_id": ["light.desk"]})]
+    assert all(call[0] != "adaptive_lighting" for call in empty.services.calls)

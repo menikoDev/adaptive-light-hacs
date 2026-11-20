@@ -173,6 +173,8 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     color = _color(raw.get("color"))
     color_temp = _color_temp(raw.get("color_temp"))
     brightness = _brightness(raw.get("brightness"))
+    hold_color = raw.get("hold_color") is True
+    hold_brightness = raw.get("hold_brightness") is True
     generation = raw.get("manual_clear")
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
         generation = 0
@@ -180,6 +182,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
         "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
         "lux": lux, "threshold": threshold, "window": window, "priority": priority,
         "color": color, "color_temp": color_temp, "brightness": brightness,
+        "hold_color": hold_color, "hold_brightness": hold_brightness,
         "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
         "manual_clear": generation,
         "night": raw.get("night") is True,
