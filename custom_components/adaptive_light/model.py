@@ -158,6 +158,46 @@ def _window_item(item: Any) -> dict | None:
     return None
 
 
+WINDOW_SLOTS = 8
+
+
+def sort_windows(windows: list[dict]) -> list[dict]:
+    """Earliest start first. ``HH:MM`` sorts in time order, so an overnight window follows its start."""
+    return sorted(windows, key=lambda window: (window.get("start") or "", window.get("end") or ""))
+
+
+def _pair_clock(value: Any) -> str | None:
+    """A From or To field. Empty is ``''``. Invalid is None. Seconds from a time picker are ignored."""
+    if value in (None, ""):
+        return ""
+    if not isinstance(value, str):
+        return None
+    clock = _clock(value.strip(), "")
+    if not clock:
+        return None
+    return clock
+
+
+def windows_from_numbered(pairs: list[tuple[int, Any, Any]]) -> tuple[list[dict], int | None]:
+    """From/To pairs from Group 1, Group 2, and so on.
+
+    Both empty skips that group. One side, or equal times, is not a window: the group number is returned.
+    The kept windows are sorted by start.
+    """
+    out: list[dict] = []
+    for number, start_raw, end_raw in pairs:
+        start = _pair_clock(start_raw)
+        end = _pair_clock(end_raw)
+        if start is None or end is None or bool(start) != bool(end) or (start and start == end):
+            return [], number
+        if not start and not end:
+            continue
+        window = {"start": start, "end": end}
+        if window not in out:
+            out.append(window)
+    return sort_windows(out), None
+
+
 def collect_windows(value: Any) -> list[dict]:
     """Keep well-formed windows and drop the rest. Order stays, duplicates go."""
     if isinstance(value, str):
@@ -190,7 +230,7 @@ def windows_input(value: Any) -> tuple[list[dict], bool]:
             return [], True
         if window not in out:
             out.append(window)
-    return out, False
+    return sort_windows(out), False
 
 
 def zone_windows(raw: dict) -> list[dict]:
@@ -198,7 +238,7 @@ def zone_windows(raw: dict) -> list[dict]:
     if not isinstance(raw, dict):
         return []
     if "active_windows" in raw:
-        return collect_windows(raw.get("active_windows"))
+        return sort_windows(collect_windows(raw.get("active_windows")))
     start = _open_clock(raw.get("active_start"))
     end = _open_clock(raw.get("active_end"))
     if start and end and start != end:

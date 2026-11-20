@@ -18,7 +18,7 @@
       "bad_color": "Enter red, green, and blue from 0 to 255",
       "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more",
-      "bad_active_window": "Enter each window as HH:MM-HH:MM"
+      "bad_active_window": "Enter both From and To. Equal times are not a window."
     },
     "abort": {
       "already_configured": "Outdoor light is already configured"
@@ -34,7 +34,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Add a window by typing HH:MM-HH:MM and choosing it. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns. Another zone is added as another entry.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Each window is a numbered group with From and To. Fill the next empty group to add one. Groups are ordered by start time. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns. Another zone is added as another entry.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -56,7 +56,22 @@
           "night_end": "Night until",
           "night_still": "Still, min",
           "active_hours": "Use these hours",
-          "active_windows": "Windows"
+          "group_1_from": "From",
+          "group_1_to": "To",
+          "group_2_from": "From",
+          "group_2_to": "To",
+          "group_3_from": "From",
+          "group_3_to": "To",
+          "group_4_from": "From",
+          "group_4_to": "To",
+          "group_5_from": "From",
+          "group_5_to": "To",
+          "group_6_from": "From",
+          "group_6_to": "To",
+          "group_7_from": "From",
+          "group_7_to": "To",
+          "group_8_from": "From",
+          "group_8_to": "To"
         },
         "sections": {
           "color": {
@@ -80,14 +95,76 @@
           },
           "active_hours": {
             "name": "Active hours",
-            "description": "When Use these hours is on, the zone turns lamps on and takes shared lamps during any listed window. A window may cross midnight, such as 22:00-06:00. Off, or an empty list, means always active.",
+            "description": "Turns every window on or off. Each window is its own numbered group below, with From and To. Fill the next empty group to add a window. Saved groups are ordered by start time, including an overnight window. Off, or no groups filled, means always active.",
             "data": {
-              "active_hours": "Use these hours",
-              "active_windows": "Windows"
+              "active_hours": "Use these hours"
             },
             "data_description": {
-              "active_hours": "Off keeps the zone always active, even when windows are filled. On uses every window, including one that runs overnight.",
-              "active_windows": "Add a window by typing HH:MM-HH:MM, for example 09:00-12:00, and choosing it. Type another value to add the next window. Remove a value to delete that window."
+              "active_hours": "Off keeps the zone always active, even when groups are filled. On uses every group, including one that runs overnight."
+            }
+          },
+          "group_1": {
+            "name": "Group 1",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_1_from": "From",
+              "group_1_to": "To"
+            }
+          },
+          "group_2": {
+            "name": "Group 2",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_2_from": "From",
+              "group_2_to": "To"
+            }
+          },
+          "group_3": {
+            "name": "Group 3",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_3_from": "From",
+              "group_3_to": "To"
+            }
+          },
+          "group_4": {
+            "name": "Group 4",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_4_from": "From",
+              "group_4_to": "To"
+            }
+          },
+          "group_5": {
+            "name": "Group 5",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_5_from": "From",
+              "group_5_to": "To"
+            }
+          },
+          "group_6": {
+            "name": "Group 6",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_6_from": "From",
+              "group_6_to": "To"
+            }
+          },
+          "group_7": {
+            "name": "Group 7",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_7_from": "From",
+              "group_7_to": "To"
+            }
+          },
+          "group_8": {
+            "name": "Group 8",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_8_from": "From",
+              "group_8_to": "To"
             }
           },
           "night_mode": {
@@ -142,12 +219,12 @@
       "bad_color": "Enter red, green, and blue from 0 to 255",
       "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more",
-      "bad_active_window": "Enter each window as HH:MM-HH:MM"
+      "bad_active_window": "Enter both From and To. Equal times are not a window."
     },
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Add a window by typing HH:MM-HH:MM and choosing it. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Each window is a numbered group with From and To. Fill the next empty group to add one. Groups are ordered by start time. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -169,7 +246,22 @@
           "night_end": "Night until",
           "night_still": "Still, min",
           "active_hours": "Use these hours",
-          "active_windows": "Windows"
+          "group_1_from": "From",
+          "group_1_to": "To",
+          "group_2_from": "From",
+          "group_2_to": "To",
+          "group_3_from": "From",
+          "group_3_to": "To",
+          "group_4_from": "From",
+          "group_4_to": "To",
+          "group_5_from": "From",
+          "group_5_to": "To",
+          "group_6_from": "From",
+          "group_6_to": "To",
+          "group_7_from": "From",
+          "group_7_to": "To",
+          "group_8_from": "From",
+          "group_8_to": "To"
         },
         "sections": {
           "color": {
@@ -193,14 +285,76 @@
           },
           "active_hours": {
             "name": "Active hours",
-            "description": "When Use these hours is on, the zone turns lamps on and takes shared lamps during any listed window. A window may cross midnight, such as 22:00-06:00. Off, or an empty list, means always active.",
+            "description": "Turns every window on or off. Each window is its own numbered group below, with From and To. Fill the next empty group to add a window. Saved groups are ordered by start time, including an overnight window. Off, or no groups filled, means always active.",
             "data": {
-              "active_hours": "Use these hours",
-              "active_windows": "Windows"
+              "active_hours": "Use these hours"
             },
             "data_description": {
-              "active_hours": "Off keeps the zone always active, even when windows are filled. On uses every window, including one that runs overnight.",
-              "active_windows": "Add a window by typing HH:MM-HH:MM, for example 09:00-12:00, and choosing it. Type another value to add the next window. Remove a value to delete that window."
+              "active_hours": "Off keeps the zone always active, even when groups are filled. On uses every group, including one that runs overnight."
+            }
+          },
+          "group_1": {
+            "name": "Group 1",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_1_from": "From",
+              "group_1_to": "To"
+            }
+          },
+          "group_2": {
+            "name": "Group 2",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_2_from": "From",
+              "group_2_to": "To"
+            }
+          },
+          "group_3": {
+            "name": "Group 3",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_3_from": "From",
+              "group_3_to": "To"
+            }
+          },
+          "group_4": {
+            "name": "Group 4",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_4_from": "From",
+              "group_4_to": "To"
+            }
+          },
+          "group_5": {
+            "name": "Group 5",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_5_from": "From",
+              "group_5_to": "To"
+            }
+          },
+          "group_6": {
+            "name": "Group 6",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_6_from": "From",
+              "group_6_to": "To"
+            }
+          },
+          "group_7": {
+            "name": "Group 7",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_7_from": "From",
+              "group_7_to": "To"
+            }
+          },
+          "group_8": {
+            "name": "Group 8",
+            "description": "From and To for this window, the same time fields as Night from and Night until. Leave both empty to skip the group. Fill the next empty group to add a window.",
+            "data": {
+              "group_8_from": "From",
+              "group_8_to": "To"
             }
           },
           "night_mode": {

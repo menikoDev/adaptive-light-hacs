@@ -480,6 +480,68 @@ def test_two_windows_the_second_one_turns_the_lamp_on_and_takes_a_shared_lamp():
     assert outside._owner_of(lamp)[1] == "living"
 
 
+def test_two_from_to_windows_match_the_string_windows():
+    """Group From/To pairs sort by start and behave like the old HH:MM-HH:MM list."""
+    from datetime import datetime
+
+    from adaptive_light.model import windows_from_numbered, windows_input, zone_windows
+
+    strings, bad = windows_input(["18:00-20:00", "09:00-10:00"])
+    assert bad is False
+    pairs, failed = windows_from_numbered([
+        (1, "18:00:00", "20:00:00"),
+        (2, "09:00", "10:00"),
+    ])
+    assert failed is None
+    assert pairs == strings
+    assert pairs == [{"start": "09:00", "end": "10:00"}, {"start": "18:00", "end": "20:00"}]
+    overnight, failed = windows_from_numbered([(1, "22:00", "06:00"), (2, "09:00", "10:00")])
+    assert failed is None
+    assert overnight == zone_windows({"active_windows": ["22:00-06:00", "09:00-10:00"]})
+    assert [window["start"] for window in overnight] == ["09:00", "22:00"]
+    assert zone_windows({"active_start": "15:00", "active_end": "10:00"}) == [{"start": "15:00", "end": "10:00"}]
+
+    def at(hour, minute):
+        return lambda: datetime(2026, 11, 20, hour, minute)
+
+    def apply_windows(hour, minute, windows):
+        home = Home()
+        home.states.set("binary_sensor.room", "on")
+        home.states.set("binary_sensor.desk", "on")
+        home.states.set("light.shared", "off")
+        mgr = AdaptiveLightManager(home, {"version": 5, "zones": [
+            {
+                "key": "living",
+                "name": "Living",
+                "lamps": ["light.shared"],
+                "presence": ["binary_sensor.room"],
+                "off_timeout": 30,
+                "threshold": 0,
+                "priority": 0,
+            },
+            {
+                "key": "desk",
+                "name": "Desk",
+                "lamps": ["light.shared"],
+                "presence": ["binary_sensor.desk"],
+                "off_timeout": 30,
+                "threshold": 0,
+                "priority": 1,
+                "active_hours": True,
+                "active_windows": windows,
+            },
+        ]}, now=home.now, local_now=at(hour, minute))
+        result = run(mgr.apply("desk"))
+        return result, mgr._owner_of("light.shared")[1]
+
+    assert apply_windows(19, 0, pairs) == apply_windows(19, 0, strings)
+    assert apply_windows(19, 0, pairs) == ("on", "desk")
+    assert apply_windows(12, 0, pairs) == apply_windows(12, 0, strings)
+    assert apply_windows(12, 0, pairs) == ("wait", "living")
+    assert apply_windows(23, 30, overnight) == ("on", "desk")
+    assert apply_windows(12, 0, overnight) == ("wait", "living")
+
+
 def test_one_hold_color_sends_rgb_when_any_box_is_set_and_kelvin_otherwise():
     from adaptive_light.manager import _service_color
 
@@ -527,12 +589,16 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
         assert "color_temp" in sections["color"]["data"] and "color_r" in sections["color"]["data"]
         assert sections["active_hours"]["data"]["active_hours"] == "Use these hours"
         assert translated["active_hours"]["data"]["active_hours"] == "Использовать эти часы"
-        assert sections["active_hours"]["data"]["active_windows"] == "Windows"
-        assert translated["active_hours"]["data"]["active_windows"] == "Окна"
+        assert "active_windows" not in sections["active_hours"]["data"]
         assert "active_start" not in sections["active_hours"]["data"]
+        for number in (1, 2):
+            assert sections[f"group_{number}"]["name"] == f"Group {number}"
+            assert translated[f"group_{number}"]["name"] == f"Группа {number}"
+            assert sections[f"group_{number}"]["data"][f"group_{number}_from"] == "From"
+            assert sections[f"group_{number}"]["data"][f"group_{number}_to"] == "To"
+            assert translated[f"group_{number}"]["data"][f"group_{number}_from"] == "С"
+            assert translated[f"group_{number}"]["data"][f"group_{number}_to"] == "До"
+            assert sections[f"group_{number}"]["description"] != translated[f"group_{number}"]["description"]
         assert sections["active_hours"]["data_description"]["active_hours"]
         assert translated["active_hours"]["data_description"]["active_hours"]
         assert sections["active_hours"]["data_description"]["active_hours"] != translated["active_hours"]["data_description"]["active_hours"]
-        assert sections["active_hours"]["data_description"]["active_windows"]
-        assert translated["active_hours"]["data_description"]["active_windows"]
-        assert sections["active_hours"]["data_description"]["active_windows"] != translated["active_hours"]["data_description"]["active_windows"]

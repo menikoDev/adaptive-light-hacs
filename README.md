@@ -54,11 +54,11 @@ An unchecked box sends nothing.
 
 ### Active hours
 
-The Use these hours switch is off by default, so the zone stays active. On, the zone turns lamps on and takes shared lamps when the current time falls in any window. In the Windows field, add a window by typing `09:00-12:00` and choosing it, then type the next one, such as `18:00-22:00`. An overnight window is one value, `22:00-06:00`. An empty list means always active. Off ignores every window.
+The Use these hours switch is off by default, so the zone stays active. On, the zone turns lamps on and takes shared lamps when the current time falls in any window. Each window is a numbered group, Group 1 and Group 2, with From and To time fields, the same kind as Night from and Night until. Fill the next empty group to add a window. Leave both times empty to skip that group. Saved groups are ordered by start time, so an overnight window such as 22:00 to 06:00 follows its start. No groups filled means always active. Off ignores every group. A zone saved as `09:00-12:00` still loads.
 
 ![Active hours from 3:00 PM until 10:00 AM](docs/images/active-hours.png)
 
-The shot is the older form, one From and Until that cross midnight. The current group is the switch plus the Windows list.
+The shot is an older form, one From and Until that cross midnight. The current form is the switch plus Group 1, Group 2, and so on.
 
 ### Night mode
 
