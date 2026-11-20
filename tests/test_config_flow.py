@@ -26,8 +26,8 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-FIELDS = ["name", "lamps", "presence", "lux", "threshold", "lux_gap", "priority", "color", "brightness", "off_timeout", "night", "night_start", "night_end", "night_still"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "lux_gap", "priority", "color", "brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
+FIELDS = ["name", "lamps", "presence", "lux", "threshold", "lux_gap", "priority", "color", "color_temp", "brightness", "off_timeout", "night", "night_start", "night_end", "night_still"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "lux_gap", "priority", "color", "color_temp", "brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still"}
 
 
 def run(coro):
@@ -176,11 +176,15 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     options = _schema_fields(sub(Options(cfg), "zone"))
     for fields in (create, options):
         color_key, color_sel = fields["color"]
+        kelvin_key, kelvin_sel = fields["color_temp"]
         bright_key, bright_sel = fields["brightness"]
-        assert type(color_key) is vol.Optional and type(bright_key) is vol.Optional
+        assert type(color_key) is vol.Optional and type(kelvin_key) is vol.Optional and type(bright_key) is vol.Optional
         assert color_sel.selector_type == "color_rgb"
+        assert kelvin_sel.selector_type == "color_temp" and kelvin_sel.config["unit"] == "kelvin"
+        assert kelvin_sel.config["min"] == 1000 and kelvin_sel.config["max"] == 10000
         assert bright_sel.selector_type == "number" and bright_sel.config["mode"] == "slider"
         assert not (color_key.description or {}).get("suggested_value")
+        assert not (kelvin_key.description or {}).get("suggested_value")
         assert (bright_key.description or {}).get("suggested_value") in (None, "")
         assert type(fields["priority"][0]) is vol.Required
         assert fields["lux_gap"][1].selector_type == "number"
@@ -202,11 +206,13 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         ("options", "step", "zone", "title"),
         ("options", "step", "zone", "data", "priority"),
         ("options", "step", "zone", "data", "color"),
+        ("options", "step", "zone", "data", "color_temp"),
         ("options", "step", "zone", "data", "brightness"),
         ("config", "step", "user", "menu_options", "zone"),
         ("config", "step", "user", "menu_options", "outdoor"),
         ("config", "step", "zone", "data", "priority"),
         ("config", "step", "zone", "data", "color"),
+        ("config", "step", "zone", "data", "color_temp"),
         ("config", "step", "zone", "data", "brightness"),
     ]
     russian = {}
@@ -221,13 +227,14 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     assert russian["options.step.zone.title"] == "Зона"
     assert russian["options.step.zone.data.priority"] == "Приоритет"
     assert russian["options.step.zone.data.color"] == "Цвет"
+    assert russian["options.step.zone.data.color_temp"] == "Цветовая температура, К"
     assert russian["options.step.zone.data.brightness"] == "Яркость"
     assert russian["config.step.user.menu_options.zone"] == "Зона"
     assert russian["config.step.user.menu_options.outdoor"] == "Уличный свет"
 
     saved = sub(Wizard(), "zone", _fill())
     zone = saved["data"]["config"]["zones"][0]
-    assert zone["color"] == "" and zone["brightness"] is None
+    assert zone["color"] == "" and zone["color_temp"] is None and zone["brightness"] is None
     picked = sub(Wizard(), "zone", {**_fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"]), "color": [9, 8, 7], "brightness": 40})
     chosen = picked["data"]["config"]["zones"][0]
     assert chosen["color"] == [9, 8, 7] and chosen["brightness"] == 40

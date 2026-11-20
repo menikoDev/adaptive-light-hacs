@@ -87,6 +87,20 @@ def _color_input(value: Any) -> str | list[int] | None:
     return None
 
 
+def _color_temp_input(value: Any) -> int | None | bool:
+    """None when empty, False when invalid, otherwise kelvin from 1000 to 10000."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, float) and not value.is_integer():
+        return False
+    number = int(value)
+    if number < 1000 or number > 10000:
+        return False
+    return number
+
+
 def _brightness_input(value: Any) -> tuple[int | None, bool]:
     if value in (None, ""):
         return None, False
@@ -190,6 +204,13 @@ class _Fields:
             current.get("priority", 0),
         )
         color, color_sel = self._optional("color", sel.ColorRGBSelector(), _rgb_value(current.get("color")))
+        color_temp, color_temp_sel = self._optional(
+            "color_temp",
+            sel.ColorTempSelector(sel.ColorTempSelectorConfig(
+                unit=sel.ColorTempSelectorUnit.KELVIN, min=1000, max=10000,
+            )),
+            current.get("color_temp"),
+        )
         brightness, brightness_sel = self._optional(
             "brightness",
             sel.NumberSelector(sel.NumberSelectorConfig(
@@ -214,7 +235,7 @@ class _Fields:
         )
         return vol.Schema({
             name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, gap: gap_sel,
-            priority: priority_sel, color: color_sel, brightness: brightness_sel,
+            priority: priority_sel, color: color_sel, color_temp: color_temp_sel, brightness: brightness_sel,
             timeout: timeout_sel, night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
 
@@ -259,6 +280,10 @@ class _Fields:
         color = _color_input(user_input.get("color") if "color" in user_input else None)
         if color is None:
             errors["color"] = "bad_color"
+        color_temp = _color_temp_input(user_input.get("color_temp") if "color_temp" in user_input else None)
+        if color_temp is False:
+            errors["color_temp"] = "bad_color_temp"
+            color_temp = None
         brightness, brightness_bad = _brightness_input(user_input.get("brightness") if "brightness" in user_input else None)
         if brightness_bad:
             errors["brightness"] = "bad_brightness"
@@ -279,7 +304,7 @@ class _Fields:
         return {
             "name": name, "lamps": lamps, "presence": presence, "off_timeout": timeout,
             "lux": lux, "threshold": threshold, "lux_gap": gap, "priority": priority,
-            "color": color, "brightness": brightness, "lux_coefficient": coefficient,
+            "color": color, "color_temp": color_temp, "brightness": brightness, "lux_coefficient": coefficient,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
         }, {}
 

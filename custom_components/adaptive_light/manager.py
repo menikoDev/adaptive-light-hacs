@@ -362,20 +362,25 @@ class AdaptiveLightManager:
 
     async def _set_lamps(self, zone: str, lamps: list[str], want: str, reason: str) -> None:
         spec = self.cfg.zones.get(zone) or {}
+        color_fields = _service_color(spec) if want == "on" else {}
         need = []
         for entity in lamps:
             if not self._owns(zone, entity):
                 continue
             current = self._lamp_state(entity)
-            if self._already(entity, want):
+            # An already-correct lamp with no color or brightness stays untouched.
+            # A configured color or brightness is sent again so a color-temperature
+            # lamp does not remain at whatever Adaptive Lighting last wrote.
+            if self._already(entity, want) and not color_fields:
                 continue
+            facts = self._service_facts(zone, entity, want, color_fields)
             if want == "on" and self._manual_blocked(entity):
                 if entity not in self._block_logged:
-                    self._emit(zone, entity, current, "on", "manual-off-block")
+                    self._emit(zone, entity, current, "on", "manual-off-block", **facts)
                     self._block_logged.add(entity)
                 continue
             self._block_logged.discard(entity)
-            self._emit(zone, entity, current, want, reason)
+            self._emit(zone, entity, current, want, reason, **facts)
             need.append(entity)
         if not need:
             return
@@ -385,12 +390,7 @@ class AdaptiveLightManager:
                     mgr._expect[entity] = want
         context = self._own_context()
         kwargs = {"context": context} if context is not None else {}
-        data: dict[str, Any] = {"entity_id": need}
-        if want == "on":
-            data.update(_color_data(spec.get("color")))
-            bright = spec.get("brightness")
-            if isinstance(bright, int) and not isinstance(bright, bool):
-                data["brightness"] = bright
+        data: dict[str, Any] = {"entity_id": need, **color_fields}
         await self.hass.services.async_call("light", _SERVICE[want], data, **kwargs)
 
     def _own_context(self):
@@ -486,8 +486,33 @@ class AdaptiveLightManager:
                 return zone
         return ""
 
-    def _emit(self, zone: str, entity: str, old, new, reason: str) -> None:
-        emit(zone, entity, old, new, reason, self.now())
+    def _emit(self, zone: str, entity: str, old, new, reason: str, **facts) -> None:
+        emit(zone, entity, old, new, reason, self.now(), **facts)
+
+    def _service_facts(self, zone: str, entity: str, want: str, data: dict) -> dict:
+        spec = self.cfg.zones.get(zone) or {}
+        upper = int(spec.get("threshold") or 0)
+        gap = int(spec.get("lux_gap") or 0)
+        level = self.estimate(zone) if zone in self.cfg.zones else None
+        average = window_average(self._lux_samples.get(zone, []), self.now()) if upper > 0 else None
+        found = self._owner_of(entity)
+        rgb = data.get("rgb_color")
+        if isinstance(rgb, list):
+            rgb = ",".join(str(part) for part in rgb)
+        elif "color_name" in data:
+            rgb = data["color_name"]
+        return {
+            "service": "turn_on" if want == "on" else "turn_off",
+            "rgb": rgb,
+            "kelvin": data.get("color_temp_kelvin"),
+            "brightness": data.get("brightness"),
+            "presence": "on" if zone in self.cfg.zones and self.occupied(zone) else "off",
+            "estimate": _logged_number(level),
+            "average": None if average is None else _logged_number(round(float(average), 2)),
+            "upper": upper,
+            "lower": lower_lux(upper, gap),
+            "owner": found[1] if found else None,
+        }
 
     def _log_value(self, zone: str, kind: str, entity: str, new: str, reason: str) -> None:
         key = (zone, kind)
@@ -617,6 +642,26 @@ class AdaptiveLightManager:
     async def async_flush(self) -> None:
         if self.store is not None:
             await self.store.async_save(self._snapshot())
+
+
+def _logged_number(value):
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def _service_color(spec: dict) -> dict[str, Any]:
+    """Color and brightness for turn_on. Kelvin wins over RGB. Empty sends neither."""
+    data: dict[str, Any] = {}
+    kelvin = spec.get("color_temp")
+    if isinstance(kelvin, int) and not isinstance(kelvin, bool):
+        data["color_temp_kelvin"] = kelvin
+    else:
+        data.update(_color_data(spec.get("color")))
+    bright = spec.get("brightness")
+    if isinstance(bright, int) and not isinstance(bright, bool):
+        data["brightness"] = bright
+    return data
 
 
 def _color_data(color: Any) -> dict[str, Any]:

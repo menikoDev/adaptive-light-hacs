@@ -16,6 +16,7 @@
       "bad_gap": "Enter the gap in lux",
       "bad_brightness": "Enter a brightness from 0 to 255",
       "bad_color": "Choose a color",
+      "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more"
     },
     "abort": {
@@ -32,7 +33,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present and the current estimate is below the upper threshold, these lamps turn on at once while the history is shorter than 10 minutes. After that, a gap above zero turns them on when the average is from the lower threshold up to but not including the upper threshold, and turns them off when the average is below the lower threshold. An average at or above the upper threshold does not turn them on. Gap 0 has no lower band, so the average does not block turn-on. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Color and brightness are sent only when this zone sets them. Empty leaves both to Adaptive Lighting. Another zone is added as another entry.",
+        "description": "One zone, on its own. When someone is present and the current estimate is below the upper threshold, these lamps turn on at once while the history is shorter than 10 minutes. After that, a gap above zero turns them on when the average is from the lower threshold up to but not including the upper threshold, and turns them off when the average is below the lower threshold. An average at or above the upper threshold does not turn them on. Gap 0 has no lower band, so the average does not block turn-on. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Color temperature in kelvin is sent when it is set; otherwise an RGB color is sent when it is set. Brightness is sent when it is set. Empty leaves color and brightness to Adaptive Lighting. Another zone is added as another entry.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -42,6 +43,7 @@
           "lux_gap": "Gap, lx",
           "priority": "Priority",
           "color": "Color",
+          "color_temp": "Color temperature, K",
           "brightness": "Brightness",
           "off_timeout": "Off timeout, s",
           "night": "Night mode",
@@ -88,12 +90,13 @@
       "bad_gap": "Enter the gap in lux",
       "bad_brightness": "Enter a brightness from 0 to 255",
       "bad_color": "Choose a color",
+      "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more"
     },
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present and the current estimate is below the upper threshold, these lamps turn on at once while the history is shorter than 10 minutes. After that, a gap above zero turns them on when the average is from the lower threshold up to but not including the upper threshold, and turns them off when the average is below the lower threshold. An average at or above the upper threshold does not turn them on. Gap 0 has no lower band, so the average does not block turn-on. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Color and brightness are sent only when this zone sets them. Empty leaves both to Adaptive Lighting.",
+        "description": "One zone, on its own. When someone is present and the current estimate is below the upper threshold, these lamps turn on at once while the history is shorter than 10 minutes. After that, a gap above zero turns them on when the average is from the lower threshold up to but not including the upper threshold, and turns them off when the average is below the lower threshold. An average at or above the upper threshold does not turn them on. Gap 0 has no lower band, so the average does not block turn-on. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. Night mode, during its window, turns them off after an hour without new movement and turns them on again when movement returns. Color temperature in kelvin is sent when it is set; otherwise an RGB color is sent when it is set. Brightness is sent when it is set. Empty leaves color and brightness to Adaptive Lighting.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -103,6 +106,7 @@
           "lux_gap": "Gap, lx",
           "priority": "Priority",
           "color": "Color",
+          "color_temp": "Color temperature, K",
           "brightness": "Brightness",
           "off_timeout": "Off timeout, s",
           "night": "Night mode",

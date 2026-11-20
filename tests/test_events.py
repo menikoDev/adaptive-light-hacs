@@ -116,3 +116,56 @@ def test_corridor_on_and_average_below_lower_are_logged():
         _stop(log, cap)
     assert any("reason=lux-below-upper" in line and "new=on" in line for line in cap.lines)
     assert any("reason=average-below-lower" in line and "entity=living_room" in line and "new=off" in line for line in cap.lines)
+
+
+def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("sensor.living_room_lux", "40")
+    home.states.set("light.top", "off")
+    colored = {
+        "version": 5,
+        "zones": [{
+            "key": "living_room",
+            "name": "Living Room",
+            "lamps": ["light.top"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+            "lux": "sensor.living_room_lux",
+            "threshold": 50,
+            "lux_gap": 0,
+            "color": [255, 0, 0],
+            "color_temp": 2700,
+        }],
+    }
+    mgr = AdaptiveLightManager(home, colored, now=home.now)
+    log, cap = _logger()
+    try:
+        assert run(mgr.apply("living_room")) == "on"
+        home.states.set("light.top", "on")
+        run(mgr.apply("living_room"))
+    finally:
+        _stop(log, cap)
+    assert home.services.calls[0] == ("light", "turn_on", {"entity_id": ["light.top"], "color_temp_kelvin": 2700})
+    assert home.services.calls[1] == ("light", "turn_on", {"entity_id": ["light.top"], "color_temp_kelvin": 2700})
+    stuck = next(line for line in cap.lines if "entity=light.top" in line and "old=on" in line and "new=on" in line)
+    assert "reason=lux-below-upper" in stuck
+    assert "service=turn_on" in stuck and "kelvin=2700" in stuck and "rgb=-" in stuck
+    assert "brightness=-" in stuck and "presence=on" in stuck and "estimate=40" in stuck
+    assert "upper=50" in stuck and "lower=50" in stuck and "owner=living_room" in stuck
+
+    plain_home = Home()
+    plain_home.states.set("binary_sensor.p", "on")
+    plain_home.states.set("light.top", "off")
+    plain = AdaptiveLightManager(plain_home, {
+        "version": 5,
+        "zones": [{
+            "key": "living_room",
+            "name": "Living Room",
+            "lamps": ["light.top"],
+            "presence": ["binary_sensor.p"],
+            "off_timeout": 30,
+        }],
+    }, now=plain_home.now)
+    run(plain.apply("living_room"))
+    assert plain_home.services.calls == [("light", "turn_on", {"entity_id": ["light.top"]})]

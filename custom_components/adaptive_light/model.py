@@ -55,6 +55,20 @@ def _color(value: Any) -> str | list[int]:
     return ""
 
 
+def _color_temp(value: Any) -> int | None:
+    """Unset when the zone does not choose a color temperature. Kelvin otherwise, 1000–10000."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None
+    number = int(value)
+    if number < 1000 or number > 10000:
+        return None
+    return number
+
+
 def _brightness(value: Any) -> int | None:
     """Unset when the zone does not choose a brightness. Otherwise 0–255."""
     if value in (None, ""):
@@ -151,6 +165,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
         gap = 0
     priority = _priority(raw.get("priority"))
     color = _color(raw.get("color"))
+    color_temp = _color_temp(raw.get("color_temp"))
     brightness = _brightness(raw.get("brightness"))
     generation = raw.get("manual_clear")
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
@@ -158,7 +173,7 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
     return {
         "key": key, "name": name.strip(), "lamps": lamps, "presence": presence, "off_timeout": timeout,
         "lux": lux, "threshold": threshold, "lux_gap": gap, "priority": priority,
-        "color": color, "brightness": brightness,
+        "color": color, "color_temp": color_temp, "brightness": brightness,
         "lux_coefficient": _factor(raw.get("lux_coefficient"), 1),
         "manual_clear": generation,
         "night": raw.get("night") is True,

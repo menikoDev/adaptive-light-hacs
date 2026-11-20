@@ -139,7 +139,7 @@ def test_color_and_brightness_are_sent_only_when_the_zone_set_them():
     home.services.calls.clear()
     home.states.set("light.fridge", "on")
     run(mgr.apply("fridge"))
-    assert home.services.calls == []
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.fridge"], "color_name": "ice", "brightness": 20})]
 
     home.services.calls.clear()
     home.states.set("binary_sensor.door", "off")
@@ -150,6 +150,11 @@ def test_color_and_brightness_are_sent_only_when_the_zone_set_them():
     run(plain.apply("living_room"))
     assert plain.hass.services.calls[-1] == ("light", "turn_on", {"entity_id": ["light.ceiling", "light.fridge"]})
     assert set(home.services.calls[-1][2]) == {"entity_id"}
+    home.states.set("light.ceiling", "on")
+    home.states.set("light.fridge", "on")
+    home.services.calls.clear()
+    run(plain.apply("living_room"))
+    assert home.services.calls == []
 
 
 def test_one_shared_lamp_does_not_take_the_rest_of_the_room():
