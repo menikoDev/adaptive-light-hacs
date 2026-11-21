@@ -287,9 +287,9 @@ class _Fields:
             "active_hours", sel.BooleanSelector(), current.get("active_hours") is True,
         )
         groups: dict = {}
-        for index, (start, end) in enumerate(_form_pairs(current), start=1):
-            from_key, from_sel = self._optional(f"group_{index}_from", sel.TimeSelector(), start or None)
-            to_key, to_sel = self._optional(f"group_{index}_to", sel.TimeSelector(), end or None)
+        for index, (group_start, group_end) in enumerate(_form_pairs(current), start=1):
+            from_key, from_sel = self._optional(f"group_{index}_from", sel.TimeSelector(), group_start or None)
+            to_key, to_sel = self._optional(f"group_{index}_to", sel.TimeSelector(), group_end or None)
             group_key, group_section = _group(f"group_{index}", {from_key: from_sel, to_key: to_sel})
             groups[group_key] = group_section
         color_key, color_section = _group("color", {

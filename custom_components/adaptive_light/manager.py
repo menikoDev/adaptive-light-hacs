@@ -157,6 +157,8 @@ class AdaptiveLightManager:
         self._log_enabled(zone)
         self._log_occupied(zone)
         self._lux_hold.discard(zone)
+        if self._presence_changed():
+            await self._spread_sensor_activity()
         if not self.enabled.get(zone, True):
             self._log_decision(zone, "disabled", "disabled")
             self._off_since.pop(zone, None)
@@ -170,12 +172,6 @@ class AdaptiveLightManager:
             return "wait"
         if not spec.get("night"):
             self._night_hold.discard(zone)
-        rising = self._rising(zone)
-        if rising:
-            self._last_motion[zone] = self.now()
-            if zone in self._night_hold:
-                self._night_hold.discard(zone)
-                self.save()
         if self._night_quiet(zone, spec):
             self._off_since.pop(zone, None)
             self._log_decision(zone, "off", "night-mode")
@@ -377,14 +373,42 @@ class AdaptiveLightManager:
             else:
                 await found[0].apply(found[1])
 
-    def _rising(self, zone: str) -> bool:
-        edge = False
-        for entity in self.cfg.zones[zone]["presence"]:
-            on = self.is_on(entity)
-            if on and self._seen.get(entity) is False:
-                edge = True
-            self._seen[entity] = on
-        return edge
+    def _presence_changed(self) -> bool:
+        """True when a presence sensor changed state. The first reading is not a change, and a steady on is not one either."""
+        changed = False
+        for spec in self.cfg.zones.values():
+            for entity in spec["presence"]:
+                on = self.is_on(entity)
+                previous = self._seen.get(entity)
+                self._seen[entity] = on
+                if previous is None or previous == on:
+                    continue
+                changed = True
+                for mgr in self._peers():
+                    mgr._seen[entity] = on
+        return changed
+
+    async def _spread_sensor_activity(self) -> None:
+        """Any presence change restarts every zone's night timer and wakes zones the event did not apply."""
+        stamp = self.now()
+        self._bus()["night_activity"] = stamp
+        for mgr in self._peers():
+            cleared = False
+            for zone, spec in mgr.cfg.zones.items():
+                mgr._last_motion[zone] = stamp
+                if zone in mgr._night_hold:
+                    mgr._night_hold.discard(zone)
+                    cleared = True
+            if cleared:
+                mgr.save()
+            if mgr is self:
+                for zone, spec in mgr.cfg.zones.items():
+                    if spec.get("night") and zone not in self._apply_stack:
+                        self._again.add(zone)
+                continue
+            for zone, spec in mgr.cfg.zones.items():
+                if spec.get("night"):
+                    await mgr.apply(zone)
 
     def _in_night(self, spec: dict) -> bool:
         if not spec.get("night"):
@@ -408,11 +432,12 @@ class AdaptiveLightManager:
         return current.hour, current.minute
 
     def _night_quiet(self, zone: str, spec: dict) -> bool:
-        """Hold the lamps off after an hour without new movement inside the night window.
+        """Hold the lamps off after the still period with no presence-sensor change.
 
-        A presence sensor that stays on does not count as movement. The next rising edge
-        clears the hold. Outside the window the hold, once started, still waits for movement
-        so the lamps do not come back on just because morning arrived.
+        A sensor that stays on is not activity. A later change of any presence sensor,
+        in this zone or another, restarts the period and clears the hold. Outside the
+        window the hold, once started, still waits for a change so morning alone does
+        not turn the lamps back on.
         """
         if zone in self._night_hold:
             return True

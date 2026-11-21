@@ -214,7 +214,13 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         assert (fields["window"][0].description or {}).get("suggested_value") == 10
         assert fields["off_timeout"][1].selector_type == "number"
         night = _section_fields(fields["night_mode"][1])
+        assert set(night) == {"night", "night_start", "night_end", "night_still"}
         assert night["night"][1].selector_type == "boolean"
+        assert night["night_start"][1].selector_type == "time"
+        assert night["night_end"][1].selector_type == "time"
+        assert (night["night"][0].description or {}).get("suggested_value") is False
+        assert (night["night_start"][0].description or {}).get("suggested_value") == "02:00"
+        assert (night["night_end"][0].description or {}).get("suggested_value") == "06:00"
         hours = _section_fields(fields["active_hours"][1])
         assert hours["active_hours"][1].selector_type == "boolean"
         assert type(hours["active_hours"][0]) is vol.Required
@@ -303,6 +309,35 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         ("light", "turn_on", {"entity_id": ["light.k"], "rgb_color": [9, 8, 7], "brightness": 40}),
         ("light", "turn_on", {"entity_id": ["light.k"], "rgb_color": [9, 8, 7]}),
     ]
+
+
+def test_night_from_and_to_are_saved_and_shown_again():
+    """The hour-group loop must not steal the night field names."""
+    created = sub(Wizard(), "zone", {
+        **_fill(),
+        "night_mode": {"night": True, "night_start": "22:00", "night_end": "05:00", "night_still": 30},
+        "group_1": {"group_1_from": "09:00", "group_1_to": "10:00"},
+        "group_2": {"group_2_from": "", "group_2_to": ""},
+    })
+    zone = created["data"]["config"]["zones"][0]
+    assert zone["night"] is True
+    assert zone["night_start"] == "22:00" and zone["night_end"] == "05:00" and zone["night_still"] == 30
+    assert zone["active_windows"] == [{"start": "09:00", "end": "10:00"}]
+
+    shown = _schema_fields(sub(Options(created["data"]["config"]), "zone"))
+    night = _section_fields(shown["night_mode"][1])
+    assert set(night) == {"night", "night_start", "night_end", "night_still"}
+    assert (night["night"][0].description or {}).get("suggested_value") is True
+    assert (night["night_start"][0].description or {}).get("suggested_value") == "22:00"
+    assert (night["night_end"][0].description or {}).get("suggested_value") == "05:00"
+
+    idle = sub(Wizard(), "zone", {
+        **_fill(name="Day", lamps=["light.d"], presence=["binary_sensor.d"]),
+        "night_mode": {"night": False, "night_start": "22:00", "night_end": "05:00", "night_still": 30},
+    })
+    quiet = idle["data"]["config"]["zones"][0]
+    assert quiet["night"] is False
+    assert quiet["night_start"] == "22:00" and quiet["night_end"] == "05:00"
 
 
 def test_the_flow_saves_the_four_fields_and_a_yaml_zone_still_loads():

@@ -247,14 +247,14 @@ class Clock:
         return datetime(2026, 11, 15, self.hour, self.minute)
 
 
-def _night_manager(home, clock, presence=None, night=True, key="hall", lamps=None, name="Hall"):
+def _night_manager(home, clock, presence=None, night=True, key="hall", lamps=None, name="Hall", start="02:00", end="06:00", still=60):
     raw = zone(presence or ["binary_sensor.p"], lamps=lamps)
     raw["zones"][0]["key"] = key
     raw["zones"][0]["name"] = name
     raw["zones"][0]["night"] = night
-    raw["zones"][0]["night_start"] = "02:00"
-    raw["zones"][0]["night_end"] = "06:00"
-    raw["zones"][0]["night_still"] = 60
+    raw["zones"][0]["night_start"] = start
+    raw["zones"][0]["night_end"] = end
+    raw["zones"][0]["night_still"] = still
     return AdaptiveLightManager(home, raw, now=clock.now, local_now=clock.local)
 
 
@@ -306,6 +306,151 @@ def test_without_night_mode_lying_still_keeps_the_lamps_on():
     home.services.calls.clear()
     clock.t = 3 * 3600
     assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+
+
+def test_a_saved_overnight_window_is_the_one_that_counts():
+    """22:00–05:00 is not the default 02:00–06:00. The switch off leaves those times idle."""
+    home, clock = Home(), Clock(hour=23)
+    clock.minute = 0
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "on")
+    home.states.set("light.b", "on")
+    mgr = _night_manager(home, clock, start="22:00", end="05:00", still=60)
+    assert run(mgr.apply("hall")) == "on"
+
+    clock.t = 60 * 60
+    clock.hour, clock.minute = 0, 0
+    assert run(mgr.apply("hall")) == "night"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+
+    home.states.set("binary_sensor.p", "off")
+    run(mgr.apply("hall"))
+    home.states.set("binary_sensor.p", "on")
+    home.services.calls.clear()
+    clock.hour, clock.minute = 1, 0
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+    home.services.calls.clear()
+    clock.hour, clock.minute = 12, 0
+    clock.t = 13 * 3600
+    day = _night_manager(home, clock, start="22:00", end="05:00", still=60)
+    assert run(day.apply("hall")) == "on"
+    _saw(day, home, "light.a", "on")
+    _saw(day, home, "light.b", "on")
+    home.services.calls.clear()
+    clock.t += 3 * 3600
+    assert run(day.apply("hall")) == "on"
+    assert home.services.calls == []
+
+    clock.hour, clock.minute = 23, 30
+    clock.t += 60 * 60
+    idle = _night_manager(home, clock, night=False, start="22:00", end="05:00", still=60)
+    assert run(idle.apply("hall")) == "on"
+    _saw(idle, home, "light.a", "on")
+    _saw(idle, home, "light.b", "on")
+    home.services.calls.clear()
+    clock.t += 3 * 3600
+    assert run(idle.apply("hall")) == "on"
+    assert home.services.calls == []
+
+
+def test_presence_stuck_on_with_no_further_changes_times_out():
+    """A sensor that stays on is not activity. Re-reading it must not restart the still period."""
+    home, clock = Home(), Clock()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "on")
+    home.states.set("light.b", "on")
+    mgr = _night_manager(home, clock)
+    assert run(mgr.apply("hall")) == "on"
+    home.services.calls.clear()
+    for minutes in (10, 30, 59):
+        clock.t = minutes * 60
+        clock.minute = minutes % 60
+        assert run(mgr.apply("hall")) == "on"
+        assert home.services.calls == []
+    clock.t = 60 * 60
+    clock.hour, clock.minute = 4, 0
+    assert run(mgr.apply("hall")) == "night"
+    assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
+
+
+def test_one_sensor_change_resets_the_night_timer():
+    """One presence sensor stays on. One state change restarts the still period and brings the lamps back."""
+    home, clock = Home(), Clock()
+    home.states.set("binary_sensor.sofa", "on")
+    home.states.set("binary_sensor.door", "off")
+    home.states.set("light.a", "on")
+    home.states.set("light.b", "on")
+    mgr = _night_manager(home, clock, presence=["binary_sensor.sofa", "binary_sensor.door"])
+    assert run(mgr.apply("hall")) == "on"
+    home.services.calls.clear()
+
+    clock.t = 50 * 60
+    home.states.set("binary_sensor.door", "on")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+
+    clock.t = 60 * 60
+    clock.hour, clock.minute = 4, 0
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+
+    clock.t = 50 * 60 + 60 * 60
+    clock.hour, clock.minute = 4, 50
+    assert run(mgr.apply("hall")) == "night"
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    home.services.calls.clear()
+
+    home.states.set("binary_sensor.door", "off")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a", "light.b"]})]
+
+
+def test_a_change_in_another_zone_resets_the_night_timer():
+    """A presence change on another entry restarts this zone and turns its lamps back on."""
+    from adaptive_light.const import DOMAIN
+
+    home, clock = Home(), Clock()
+    home.data = {}
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("binary_sensor.k", "off")
+    home.states.set("light.a", "on")
+    home.states.set("light.b", "on")
+    home.states.set("light.k", "off")
+    hall = _night_manager(home, clock)
+    kitchen_raw = zone(["binary_sensor.k"], lamps=["light.k"])
+    kitchen_raw["zones"][0]["key"] = "kitchen"
+    kitchen_raw["zones"][0]["name"] = "Kitchen"
+    kitchen = AdaptiveLightManager(home, kitchen_raw, now=clock.now, local_now=clock.local)
+    home.data[DOMAIN] = {"hall": hall, "kitchen": kitchen}
+
+    assert run(hall.apply("hall")) == "on"
+    assert run(kitchen.apply("kitchen")) == "wait"
+    home.services.calls.clear()
+
+    clock.t = 60 * 60
+    clock.hour, clock.minute = 4, 0
+    assert run(hall.apply("hall")) == "night"
+    _saw(hall, home, "light.a", "off")
+    _saw(hall, home, "light.b", "off")
+    home.services.calls.clear()
+
+    home.states.set("binary_sensor.k", "on")
+    assert run(kitchen.apply("kitchen")) == "on"
+    assert ("light", "turn_on", {"entity_id": ["light.a", "light.b"]}) in home.services.calls
+    assert "hall" not in hall._night_hold
+    _saw(hall, home, "light.a", "on")
+    _saw(hall, home, "light.b", "on")
+
+    home.services.calls.clear()
+    clock.t = 60 * 60 + 59 * 60
+    clock.hour, clock.minute = 4, 59
+    assert run(hall.apply("hall")) == "on"
     assert home.services.calls == []
 
 

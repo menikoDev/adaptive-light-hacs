@@ -1,8 +1,8 @@
 """Configuration: zones only.
 
 A zone has a name, one or more lamps, one or more presence sensors, and an off timeout
-in seconds. Night mode is optional: during its window, an hour without new movement
-turns the lamps off even if a presence sensor stays on. Older shapes are dropped.
+in seconds. Night mode is optional: during its window, the still period with no
+presence-sensor change turns the lamps off even if a sensor stays on. Older shapes are dropped.
 """
 from __future__ import annotations
 

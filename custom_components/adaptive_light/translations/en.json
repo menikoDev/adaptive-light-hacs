@@ -35,7 +35,7 @@
       },
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Each window is a numbered group with From and To. Fill the next empty group to add one. Groups are ordered by start time. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns. Another zone is added as another entry.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Each window is a numbered group with From and To. Fill the next empty group to add one. Groups are ordered by start time. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period when no presence sensor changes state, in this zone or another, and turn on again when any of those sensors changes. A sensor that stays on does not count. Another zone is added as another entry.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -181,7 +181,7 @@
           },
           "night_mode": {
             "name": "Night mode",
-            "description": "Inside this window, lamps turn off after the still period with no movement and turn on again when movement returns.",
+            "description": "Inside this window, lamps turn off after the still period when no presence sensor changes state, in this zone or another. A sensor that stays on does not count. Any later change starts the period again and turns the lamps back on.",
             "data": {
               "night": "Night mode",
               "night_start": "Night from",
@@ -237,7 +237,7 @@
     "step": {
       "zone": {
         "title": "Zone",
-        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Each window is a numbered group with From and To. Fill the next empty group to add one. Groups are ordered by start time. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period with no movement and turn on again when movement returns.",
+        "description": "One zone, on its own. When someone is present, these lamps turn on when the weighted average of the lux estimate over the window is below the threshold, and turn off when that average rises above the threshold. Newer samples weigh more. A falling average does not turn them off. The window defaults to 10 minutes. Threshold 0 follows presence only. When all sensors have been off for the timeout, the lamps turn off. The groups below set the color, the brightness, the hours when the zone is active, and night mode. Turn on Use these hours to stop the zone turning lamps on or taking shared lamps outside its windows. Each window is a numbered group with From and To. Fill the next empty group to add one. Groups are ordered by start time. Off, or an empty list, means always. A window may cross midnight. Night mode is separate: inside its own window, lamps turn off after the still period when no presence sensor changes state, in this zone or another, and turn on again when any of those sensors changes. A sensor that stays on does not count.",
         "data": {
           "name": "Zone name",
           "lamps": "Lamps",
@@ -383,7 +383,7 @@
           },
           "night_mode": {
             "name": "Night mode",
-            "description": "Inside this window, lamps turn off after the still period with no movement and turn on again when movement returns.",
+            "description": "Inside this window, lamps turn off after the still period when no presence sensor changes state, in this zone or another. A sensor that stays on does not count. Any later change starts the period again and turns the lamps back on.",
             "data": {
               "night": "Night mode",
               "night_start": "Night from",

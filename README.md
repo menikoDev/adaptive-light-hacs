@@ -62,7 +62,7 @@ The shot is an older form, one From and Until that cross midnight. The current f
 
 ### Night mode
 
-A separate window. It does not replace active hours. Inside it, lamps turn off after the still period with no movement and turn on again when movement returns. A presence sensor that merely stays on does not count as movement.
+A separate window. It does not replace active hours. The switch defaults off, and off means the times do nothing. On, the from/to pair is one overnight window, 02:00 to 06:00 unless you change it. Inside that window the lamps turn off after the still period when no presence sensor changes state, in this zone or in any other zone. A sensor that stays on does not count. Any later state change starts the period again and turns the lamps back on.
 
 ![Night mode, from 2:00 AM until 6:00 AM, still for 60 minutes](docs/images/night-mode.png)
 
