@@ -26,14 +26,12 @@ class ZoneEnabled(AdaptiveEntity, SwitchEntity):
         return self.mgr.enabled.get(self._zone, True)
 
     async def async_turn_on(self, **kwargs) -> None:
-        self.mgr.enabled[self._zone] = True
-        self.mgr.save()
+        self.mgr.set_enabled(self._zone, True)
         await self.mgr.apply(self._zone)
         self.mgr._arm(self._zone)
 
     async def async_turn_off(self, **kwargs) -> None:
-        self.mgr.enabled[self._zone] = False
+        self.mgr.set_enabled(self._zone, False)
         self.mgr.cancel_timer(self._zone)
-        self.mgr.save()
         await self.mgr.apply(self._zone)
         self.mgr._notify()

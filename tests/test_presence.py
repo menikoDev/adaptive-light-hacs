@@ -234,6 +234,67 @@ def test_an_external_turn_on_clears_the_block():
     assert "light.a" in home.services.calls[-1][2]["entity_id"]
 
 
+def test_leaving_does_not_clear_a_hand_off_and_the_enable_switch_does():
+    """One lamp stays off across presence. The other lamp does not. The zone switch clears only its own."""
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("binary_sensor.k", "on")
+    for lamp in ("light.a", "light.b", "light.k"):
+        home.states.set(lamp, "off")
+    raw = {
+        "version": 5,
+        "zones": [
+            zone(["binary_sensor.p"], lamps=["light.a", "light.b"])["zones"][0],
+            {
+                "key": "kitchen",
+                "name": "Kitchen",
+                "lamps": ["light.k"],
+                "presence": ["binary_sensor.k"],
+                "off_timeout": 30,
+                "entry_delay": 0,
+            },
+        ],
+    }
+    mgr = AdaptiveLightManager(home, raw, now=home.now)
+    run(mgr.apply("hall"))
+    run(mgr.apply("kitchen"))
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    _saw(mgr, home, "light.k", "on")
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.k", "off")
+    assert mgr.manual_off == {"light.a", "light.k"}
+    mgr.set_enabled("hall", True)
+    assert mgr.manual_off == {"light.a", "light.k"}
+
+    home.states.set("binary_sensor.p", "off")
+    home.t = 0
+    run(mgr.apply("hall"))
+    home.t = 30
+    assert run(mgr.apply("hall")) == "off"
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == {"light.a", "light.k"}
+
+    home.states.set("binary_sensor.p", "on")
+    home.services.calls.clear()
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.b"]})]
+    assert mgr.manual_off == {"light.a", "light.k"}
+    _saw(mgr, home, "light.b", "on")
+
+    mgr.set_enabled("hall", False)
+    assert mgr.manual_off == {"light.a", "light.k"}
+    assert run(mgr.apply("hall")) == "disabled"
+    home.services.calls.clear()
+    mgr.set_enabled("hall", True)
+    assert "light.a" not in mgr.manual_off
+    assert mgr.manual_off == {"light.k"}
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.a"]})]
+    assert run(mgr.apply("kitchen")) == "on"
+    assert not any("light.k" in call[2].get("entity_id", []) and call[1] == "turn_on" for call in home.services.calls)
+
+
 class Clock:
     def __init__(self, hour=3):
         self.t = 0.0

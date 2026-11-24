@@ -117,6 +117,28 @@ class AdaptiveLightManager:
         if cleared:
             self.save()
 
+    def set_enabled(self, zone: str, on: bool) -> None:
+        """The zone enable switch. Off, then on, forgets lamps a person switched off."""
+        was_on = self.enabled.get(zone, True)
+        self.enabled[zone] = on
+        if on and not was_on:
+            self.release_manual(zone)
+        self.save()
+
+    def release_manual(self, zone: str) -> None:
+        """Drop the hand-off mark on this zone's lamps. Other zones' lamps stay marked."""
+        spec = self.cfg.zones.get(zone)
+        if spec is None:
+            return
+        before = set(self.manual_off)
+        for lamp in spec["lamps"]:
+            if self._manual_blocked(lamp):
+                self._emit(zone, lamp, "manual-off", "clear", "zone-enabled")
+            self._share_manual(lamp, False)
+            self._block_logged.discard(lamp)
+        if self.manual_off != before:
+            self.save()
+
     def save(self) -> None:
         if self.store is None:
             return

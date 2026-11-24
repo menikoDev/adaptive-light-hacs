@@ -212,6 +212,35 @@ def test_manual_off_and_the_timeout_still_work():
     assert "light.b" not in mgr.manual_off
 
 
+def test_a_hand_off_stays_off_when_the_average_falls_back_below_the_threshold():
+    home = Home()
+    home.states.set("sensor.room", "10")
+    cfg = raw(lux="sensor.room", threshold=50, window=1)
+    mgr = ready(home, cfg)
+    assert run(mgr.apply("hall")) == "on"
+    _saw(mgr, home, "light.a", "on")
+    _saw(mgr, home, "light.b", "on")
+    _saw(mgr, home, "light.a", "off")
+    assert mgr.manual_off == {"light.a"}
+
+    home.t = 1
+    home.states.set("sensor.room", "400")
+    assert run(mgr.apply("hall")) == "on"
+    home.t = 70
+    assert run(mgr.apply("hall")) == "off"
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == {"light.a"}
+
+    home.t = 71
+    home.states.set("sensor.room", "10")
+    run(mgr.apply("hall"))
+    home.t = 140
+    home.services.calls.clear()
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [("light", "turn_on", {"entity_id": ["light.b"]})]
+    assert mgr.manual_off == {"light.a"}
+
+
 def test_already_occupied_and_below_the_threshold_turns_on_without_a_presence_edge():
     home = Home()
     home.states.set("sensor.room", "30")

@@ -32,6 +32,12 @@ One config entry is one zone, with its own lamps and sensors. Another place is a
 
 One or more `binary_sensor` entities. The zone is occupied when any of them is on. When every sensor has been off for longer than the timeout, the lamps turn off.
 
+### Switched off by hand
+
+Turn one lamp off while the zone is holding it on. The zone remembers that lamp and leaves it off. Presence coming back does not turn it on. A lux average falling below the threshold does not turn it on. The other lamps in the zone still follow presence and lux.
+
+Turn that lamp on by hand and the mark clears. Turn the zone enable switch off, then on, and the mark clears too. Leaving and coming back does not.
+
 ### Lux window
 
 An optional lux sensor. The threshold is in lux. The window is in minutes and defaults to 10. The decision uses a weighted average over that window, not the instant reading. Newer samples weigh more. An average below the threshold turns the lamps on. An average above it turns them off. A falling average does not turn them off. Threshold 0 skips this check and follows presence only.
