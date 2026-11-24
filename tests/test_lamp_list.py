@@ -17,6 +17,7 @@ def _zone(key, name, lamps, presence, priority=0, hours=False):
         "lamps": list(lamps),
         "presence": [presence],
         "off_timeout": 30,
+        "entry_delay": 0,
         "threshold": 0,
         "priority": priority,
         "active_hours": hours,

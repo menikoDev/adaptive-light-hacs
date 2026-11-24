@@ -15,6 +15,7 @@ def raw(presence=("binary_sensor.p",), timeout=30, lamps=("light.a", "light.b"),
         "lamps": list(lamps),
         "presence": list(presence),
         "off_timeout": timeout,
+        "entry_delay": 0,
     }
     zone.update(extra)
     return {"version": 5, "zones": [zone]}

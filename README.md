@@ -60,6 +60,10 @@ The Use these hours switch is off by default, so the zone stays active. On, the 
 
 The shot is an older form, one From and Until that cross midnight. The current form is the switch plus Group 1, Group 2, and so on.
 
+### Entry delay
+
+Lamps turn on only after a presence sensor stays on. The Entry delay group has Day, s (default 2) and Night, s (default 5). Use a night delay is off by default, the same kind of switch as Use these hours, so night uses the day delay until that switch is on. On, the night delay applies inside the night window. A shorter spike does not turn the lamps on. A change to off or clear does not turn them on. Zero is immediate.
+
 ### Night mode
 
 A separate window. It does not replace active hours. The switch defaults off, and off means the times do nothing. On, the from/to pair is one overnight window, 02:00 to 06:00 unless you change it. Inside that window the lamps turn off after the still period when no presence sensor changes state, in this zone or in any other zone. A sensor that stays on does not count. Any later state change starts the period again and turns the lamps back on.

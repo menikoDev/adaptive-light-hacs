@@ -26,8 +26,8 @@ from adaptive_light.manager import AdaptiveLightManager  # noqa: E402
 from adaptive_light.model import Config  # noqa: E402
 
 HASS = types.SimpleNamespace(config=types.SimpleNamespace(language="en"))
-FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "off_timeout", "color", "brightness_level", "active_hours", "group_1", "group_2", "night_mode"]
-ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still", "active_hours", "active_windows"}
+FIELDS = ["name", "lamps", "presence", "lux", "threshold", "window", "priority", "off_timeout", "entry", "color", "brightness_level", "active_hours", "group_1", "group_2", "night_mode"]
+ZONE_KEYS = {"key", "name", "lamps", "presence", "lux", "threshold", "window", "priority", "color", "color_temp", "brightness", "hold_color", "hold_brightness", "lux_coefficient", "manual_clear", "off_timeout", "night", "night_start", "night_end", "night_still", "entry_delay", "night_entry", "night_entry_delay", "active_hours", "active_windows"}
 
 
 def run(coro):
@@ -226,6 +226,15 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
         assert type(hours["active_hours"][0]) is vol.Required
         assert (hours["active_hours"][0].description or {}).get("suggested_value") is False
         assert "active_windows" not in hours
+        entry = _section_fields(fields["entry"][1])
+        assert set(entry) == {"entry_delay", "night_entry", "night_entry_delay"}
+        assert entry["entry_delay"][1].selector_type == "number"
+        assert entry["entry_delay"][1].config["unit_of_measurement"] == "s"
+        assert entry["night_entry"][1].selector_type == "boolean"
+        assert type(entry["night_entry"][0]) is vol.Required
+        assert (entry["entry_delay"][0].description or {}).get("suggested_value") == 2
+        assert (entry["night_entry"][0].description or {}).get("suggested_value") is False
+        assert (entry["night_entry_delay"][0].description or {}).get("suggested_value") == 5
         for number in (1, 2):
             group = _section_fields(fields[f"group_{number}"][1])
             assert group[f"group_{number}_from"][1].selector_type == "time"
@@ -295,6 +304,7 @@ def test_zone_form_uses_a_color_picker_and_a_brightness_slider_and_russian_label
     assert zone["hold_color"] is False and zone["hold_brightness"] is False
     picked = sub(Wizard(), "zone", {
         **_fill(name="Kitchen", lamps=["light.k"], presence=["binary_sensor.k"]),
+        "entry_delay": 0,
         "color_r": 9, "color_g": 8, "color_b": 7, "brightness": 40, "hold_color": True, "hold_brightness": True,
     })
     chosen = picked["data"]["config"]["zones"][0]
@@ -358,6 +368,10 @@ def test_the_flow_saves_the_four_fields_and_a_yaml_zone_still_loads():
     assert loaded.zones["hall"]["presence"] == ["binary_sensor.p"]
     assert loaded.zones["hall"]["off_timeout"] == 12
     assert loaded.zones["hall"]["night"] is False
+    assert loaded.zones["hall"]["entry_delay"] == 2
+    assert loaded.zones["hall"]["night_entry"] is False
+    assert loaded.zones["hall"]["night_entry_delay"] == 5
+    raw["zones"][0]["entry_delay"] = 0
     home = types.SimpleNamespace(states=_States(), services=_Services())
     home.states.set("binary_sensor.p", "on")
     home.states.set("light.a", "off")

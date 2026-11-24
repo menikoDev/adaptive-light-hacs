@@ -14,6 +14,7 @@ def _room(**extra):
         "lamps": ["light.ceiling", "light.fridge"],
         "presence": ["binary_sensor.room"],
         "off_timeout": 30,
+        "entry_delay": 0,
         "threshold": 50,
         "window": 10,
         "priority": 0,
@@ -29,6 +30,7 @@ def _fridge(**extra):
         "lamps": ["light.fridge"],
         "presence": ["binary_sensor.door"],
         "off_timeout": 10,
+        "entry_delay": 0,
         "threshold": 0,
         "priority": 10,
     }
@@ -53,9 +55,9 @@ def _calls(home, entity):
 
 def test_missing_empty_and_negative_priority_read_as_zero_and_color_stays_empty():
     cfg = normalise({"version": 5, "zones": [
-        {"key": "hall", "name": "Hall", "lamps": ["light.a"], "presence": ["binary_sensor.p"], "off_timeout": 10},
-        {"key": "kitchen", "name": "Kitchen", "lamps": ["light.b"], "presence": ["binary_sensor.q"], "off_timeout": 10, "priority": ""},
-        {"key": "study", "name": "Study", "lamps": ["light.c"], "presence": ["binary_sensor.r"], "off_timeout": 10, "priority": -4},
+        {"key": "hall", "name": "Hall", "lamps": ["light.a"], "presence": ["binary_sensor.p"], "off_timeout": 10, "entry_delay": 0},
+        {"key": "kitchen", "name": "Kitchen", "lamps": ["light.b"], "presence": ["binary_sensor.q"], "off_timeout": 10, "priority": "", "entry_delay": 0},
+        {"key": "study", "name": "Study", "lamps": ["light.c"], "presence": ["binary_sensor.r"], "off_timeout": 10, "priority": -4, "entry_delay": 0},
     ]})
     assert [zone["priority"] for zone in cfg["zones"]] == [0, 0, 0]
     assert all(
@@ -118,8 +120,8 @@ def test_equal_priority_uses_the_smaller_key():
     home.states.set("binary_sensor.b", "on")
     home.states.set("light.shared", "off")
     zones = [
-        {"key": "beta", "name": "Beta", "lamps": ["light.shared"], "presence": ["binary_sensor.b"], "off_timeout": 10, "priority": 10, "color": "red", "brightness": 10},
-        {"key": "alpha", "name": "Alpha", "lamps": ["light.shared"], "presence": ["binary_sensor.a"], "off_timeout": 10, "priority": 10},
+        {"key": "beta", "name": "Beta", "lamps": ["light.shared"], "presence": ["binary_sensor.b"], "off_timeout": 10, "priority": 10, "color": "red", "brightness": 10, "entry_delay": 0},
+        {"key": "alpha", "name": "Alpha", "lamps": ["light.shared"], "presence": ["binary_sensor.a"], "off_timeout": 10, "priority": 10, "entry_delay": 0},
     ]
     mgr = _mgr(home, zones)
     run(mgr.apply("beta"))
@@ -128,8 +130,8 @@ def test_equal_priority_uses_the_smaller_key():
     home.services.calls.clear()
     home.states.set("light.shared", "off")
     rooms = [
-        {"key": "study", "name": "Study", "lamps": ["light.shared"], "presence": ["binary_sensor.b"], "off_timeout": 10, "priority": 0, "color": "red"},
-        {"key": "living_room", "name": "Living Room", "lamps": ["light.shared"], "presence": ["binary_sensor.a"], "off_timeout": 10, "priority": 0},
+        {"key": "study", "name": "Study", "lamps": ["light.shared"], "presence": ["binary_sensor.b"], "off_timeout": 10, "priority": 0, "color": "red", "entry_delay": 0},
+        {"key": "living_room", "name": "Living Room", "lamps": ["light.shared"], "presence": ["binary_sensor.a"], "off_timeout": 10, "priority": 0, "entry_delay": 0},
     ]
     other = _mgr(home, rooms)
     run(other.apply("study"))
@@ -372,6 +374,7 @@ def test_releasing_the_beam_returns_the_ceiling_lamp_to_the_living_room_color():
             "lamps": [top_left, top_right, bottom],
             "presence": ["binary_sensor.room"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "window": 10,
             "priority": 0,
@@ -385,6 +388,7 @@ def test_releasing_the_beam_returns_the_ceiling_lamp_to_the_living_room_color():
             "lamps": [top_left],
             "presence": ["binary_sensor.table"],
             "off_timeout": 10,
+            "entry_delay": 0,
             "threshold": 0,
             "window": 10,
             "priority": 1,
@@ -397,6 +401,7 @@ def test_releasing_the_beam_returns_the_ceiling_lamp_to_the_living_room_color():
             "lamps": ["light.desk"],
             "presence": ["binary_sensor.desk"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "priority": 2,
             "color": [255, 0, 0],

@@ -38,6 +38,7 @@ def _zone(**extra):
         "lamps": ["light.ceiling_1", "light.ceiling_2", "light.ceiling_3"],
         "presence": ["binary_sensor.motion_a", "binary_sensor.motion_b"],
         "off_timeout": 300,
+        "entry_delay": 0,
         "lux": "sensor.living_room_lux",
         "threshold": 50,
         "window": 10,
@@ -114,6 +115,7 @@ def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
             "lamps": ["light.top"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "lux": "sensor.living_room_lux",
             "threshold": 50,
             "window": 10,
@@ -149,6 +151,7 @@ def test_kelvin_is_sent_and_logged_and_an_empty_color_stays_entity_id_only():
             "lamps": ["light.top"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
         }],
     }, now=plain_home.now)
     run(plain.apply("living_room"))
@@ -169,6 +172,7 @@ def test_threshold_zero_sends_kelvin_and_holds_it_after_another_integration_repa
             "lamps": ["light.desk"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "window": 10,
             "color": "",
@@ -207,6 +211,7 @@ def test_hold_color_and_hold_brightness_call_adaptive_lighting_for_that_part_onl
             "lamps": ["light.desk"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "color": [20, 180, 60],
             "color_temp": 4003,
@@ -276,6 +281,7 @@ def test_hold_color_with_rgb_green_turns_the_lamp_green():
             "lamps": ["light.desk"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "color": rgb_channels(0, 255, 0),
             "color_temp": 4003,
@@ -311,6 +317,7 @@ def test_outside_the_active_window_an_occupied_zone_does_not_turn_the_lamp_on():
             "lamps": ["light.desk"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "active_hours": True,
             "active_start": "09:00",
@@ -345,6 +352,7 @@ def test_outside_the_active_window_an_occupied_zone_does_not_turn_the_lamp_on():
             "lamps": [lamp],
             "presence": ["binary_sensor.room"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "priority": 0,
         },
@@ -354,6 +362,7 @@ def test_outside_the_active_window_an_occupied_zone_does_not_turn_the_lamp_on():
             "lamps": [lamp],
             "presence": ["binary_sensor.table"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "priority": 1,
             "color": [0, 0, 255],
@@ -385,6 +394,7 @@ def test_active_hours_switch_off_ignores_a_filled_overnight_window():
             "lamps": ["light.desk"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "active_start": "15:00",
             "active_end": "10:00",
@@ -420,6 +430,7 @@ def test_two_windows_the_second_one_turns_the_lamp_on_and_takes_a_shared_lamp():
             "lamps": ["light.desk"],
             "presence": ["binary_sensor.p"],
             "off_timeout": 30,
+            "entry_delay": 0,
             "threshold": 0,
             "active_hours": True,
             "active_windows": windows,
@@ -455,6 +466,7 @@ def test_two_windows_the_second_one_turns_the_lamp_on_and_takes_a_shared_lamp():
                 "lamps": [lamp],
                 "presence": ["binary_sensor.room"],
                 "off_timeout": 30,
+                "entry_delay": 0,
                 "threshold": 0,
                 "priority": 0,
             },
@@ -464,6 +476,7 @@ def test_two_windows_the_second_one_turns_the_lamp_on_and_takes_a_shared_lamp():
                 "lamps": [lamp],
                 "presence": ["binary_sensor.desk"],
                 "off_timeout": 30,
+                "entry_delay": 0,
                 "threshold": 0,
                 "priority": 1,
                 "active_hours": True,
@@ -516,6 +529,7 @@ def test_two_from_to_windows_match_the_string_windows():
                 "lamps": ["light.shared"],
                 "presence": ["binary_sensor.room"],
                 "off_timeout": 30,
+                "entry_delay": 0,
                 "threshold": 0,
                 "priority": 0,
             },
@@ -525,6 +539,7 @@ def test_two_from_to_windows_match_the_string_windows():
                 "lamps": ["light.shared"],
                 "presence": ["binary_sensor.desk"],
                 "off_timeout": 30,
+                "entry_delay": 0,
                 "threshold": 0,
                 "priority": 1,
                 "active_hours": True,
@@ -567,12 +582,14 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
         "brightness_level": "Brightness",
         "active_hours": "Active hours",
         "night_mode": "Night mode",
+        "entry": "Entry delay",
     }
     russian = {
         "color": "Цвет",
         "brightness_level": "Яркость",
         "active_hours": "Активные часы",
         "night_mode": "Ночной режим",
+        "entry": "Задержка включения",
     }
     for flow in ("config", "options"):
         sections = en[flow]["step"]["zone"]["sections"]
@@ -615,6 +632,18 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
         assert sections["active_hours"]["data_description"]["active_hours"]
         assert translated["active_hours"]["data_description"]["active_hours"]
         assert sections["active_hours"]["data_description"]["active_hours"] != translated["active_hours"]["data_description"]["active_hours"]
+        assert sections["entry"]["data"]["entry_delay"] == "Day, s"
+        assert sections["entry"]["data"]["night_entry"] == "Use a night delay"
+        assert sections["entry"]["data"]["night_entry_delay"] == "Night, s"
+        assert translated["entry"]["data"]["entry_delay"] == "День, с"
+        assert translated["entry"]["data"]["night_entry"] == "Своя задержка ночью"
+        assert translated["entry"]["data"]["night_entry_delay"] == "Ночь, с"
+        assert data["entry_delay"] == "Day, s" and russian_data["entry_delay"] == "День, с"
+        assert data["night_entry"] == "Use a night delay" and russian_data["night_entry"] == "Своя задержка ночью"
+        assert data["night_entry_delay"] == "Night, s" and russian_data["night_entry_delay"] == "Ночь, с"
+        assert sections["entry"]["data_description"]["night_entry"]
+        assert translated["entry"]["data_description"]["night_entry"]
+        assert sections["entry"]["data_description"]["night_entry"] != translated["entry"]["data_description"]["night_entry"]
 
     def keys(obj, prefix=""):
         found = set()
@@ -631,6 +660,7 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
     shown = {
         "zone": [
             "name", "lamps", "presence", "lux", "threshold", "window", "priority", "off_timeout",
+            "entry", "entry_delay", "night_entry", "night_entry_delay",
             "color", "brightness_level", "night_mode", "active_hours",
             *[f"group_{number}" for number in range(1, 9)],
             *[f"group_{number}_{side}" for number in range(1, 9) for side in ("from", "to")],
@@ -646,7 +676,7 @@ def test_zone_form_groups_are_labeled_in_english_and_russian():
     for code in (
         "need_name", "need_lamps", "bad_lamp", "need_presence", "bad_presence", "bad_timeout",
         "bad_lux", "bad_threshold", "bad_window", "bad_color", "bad_color_temp", "bad_brightness",
-        "bad_active_window", "bad_factor", "need_color", "bad_duration", "bad_return", "need_zone",
+        "bad_active_window", "bad_entry_delay", "bad_factor", "need_color", "bad_duration", "bad_return", "need_zone",
         "duplicate_key",
     ):
         for catalog in (en, ru):

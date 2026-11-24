@@ -279,6 +279,16 @@ def _still(value: Any) -> int:
     return min(number, 24 * 60)
 
 
+def _entry_seconds(value: Any, default: int) -> int:
+    """Seconds before lamps turn on. Missing or invalid uses the default. Zero is immediate."""
+    if value in (None, ""):
+        return default
+    number = _timeout(value)
+    if number is None:
+        return default
+    return min(number, 24 * 60 * 60)
+
+
 def _entities(value: Any, domain: str) -> list[str] | None:
     if isinstance(value, str):
         value = [value]
@@ -333,6 +343,9 @@ def _zone(raw: Any, used: set[str]) -> dict | None:
         "night_start": _clock(raw.get("night_start"), "02:00"),
         "night_end": _clock(raw.get("night_end"), "06:00"),
         "night_still": _still(raw.get("night_still")),
+        "entry_delay": _entry_seconds(raw.get("entry_delay"), 2),
+        "night_entry": raw.get("night_entry") is True,
+        "night_entry_delay": _entry_seconds(raw.get("night_entry_delay"), 5),
         "active_hours": raw.get("active_hours") is True,
         "active_windows": zone_windows(raw),
     }

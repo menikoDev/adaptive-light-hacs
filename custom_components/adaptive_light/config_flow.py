@@ -112,7 +112,7 @@ def _timeout(value: Any) -> int | None:
     return number
 
 
-_GROUPS = ("color", "brightness_level", "active_hours", "night_mode")
+_GROUPS = ("color", "brightness_level", "active_hours", "night_mode", "entry")
 
 
 def _group(key: str, fields: dict):
@@ -275,6 +275,25 @@ class _Fields:
             )),
             current.get("off_timeout", 60),
         )
+        stored_delay = current.get("entry_delay")
+        day_delay, day_delay_sel = self._field(
+            "entry_delay",
+            sel.NumberSelector(sel.NumberSelectorConfig(
+                min=0, max=86400, step=1, unit_of_measurement="s", mode=sel.NumberSelectorMode.BOX,
+            )),
+            2 if stored_delay is None else stored_delay,
+        )
+        night_entry, night_entry_sel = self._field(
+            "night_entry", sel.BooleanSelector(), current.get("night_entry") is True,
+        )
+        stored_night_delay = current.get("night_entry_delay")
+        night_delay, night_delay_sel = self._field(
+            "night_entry_delay",
+            sel.NumberSelector(sel.NumberSelectorConfig(
+                min=0, max=86400, step=1, unit_of_measurement="s", mode=sel.NumberSelectorMode.BOX,
+            )),
+            5 if stored_night_delay is None else stored_night_delay,
+        )
         night, night_sel = self._field("night", sel.BooleanSelector(), current.get("night") is True)
         start, start_sel = self._field("night_start", sel.TimeSelector(), current.get("night_start") or "02:00")
         end, end_sel = self._field("night_end", sel.TimeSelector(), current.get("night_end") or "06:00")
@@ -301,9 +320,12 @@ class _Fields:
         night_key, night_section = _group("night_mode", {
             night: night_sel, start: start_sel, end: end_sel, still: still_sel,
         })
+        entry_key, entry_section = _group("entry", {
+            day_delay: day_delay_sel, night_entry: night_entry_sel, night_delay: night_delay_sel,
+        })
         return vol.Schema({
             name: name_sel, lamps: lamp_sel, presence: presence_sel, lux: lux_sel, threshold: threshold_sel, window: window_sel,
-            priority: priority_sel, timeout: timeout_sel,
+            priority: priority_sel, timeout: timeout_sel, entry_key: entry_section,
             color_key: color_section, bright_key: bright_section,
             hours_key: hours_section, **groups, night_key: night_section,
         })
@@ -366,6 +388,15 @@ class _Fields:
             errors["brightness"] = "bad_brightness"
         night = user_input.get("night") is True
         active_hours = user_input.get("active_hours") is True
+        entry_delay = _timeout(user_input.get("entry_delay")) if "entry_delay" in user_input and user_input.get("entry_delay") not in (None, "") else 2
+        if "entry_delay" in user_input and user_input.get("entry_delay") not in (None, "") and entry_delay is None:
+            errors["entry_delay"] = "bad_entry_delay"
+            entry_delay = 2
+        night_entry = user_input.get("night_entry") is True
+        night_entry_delay = _timeout(user_input.get("night_entry_delay")) if "night_entry_delay" in user_input and user_input.get("night_entry_delay") not in (None, "") else 5
+        if "night_entry_delay" in user_input and user_input.get("night_entry_delay") not in (None, "") and night_entry_delay is None:
+            errors["night_entry_delay"] = "bad_entry_delay"
+            night_entry_delay = 5
         numbered = []
         for index in range(1, WINDOW_SLOTS + 1):
             start_key = f"group_{index}_from"
@@ -396,6 +427,7 @@ class _Fields:
             "hold_color": user_input.get("hold_color") is True,
             "hold_brightness": user_input.get("hold_brightness") is True,
             "night": night, "night_start": start, "night_end": end, "night_still": still,
+            "entry_delay": entry_delay, "night_entry": night_entry, "night_entry_delay": night_entry_delay,
             "active_hours": active_hours, "active_windows": active_windows,
         }, {}
 

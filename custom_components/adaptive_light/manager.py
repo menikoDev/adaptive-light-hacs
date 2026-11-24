@@ -30,6 +30,7 @@ class AdaptiveLightManager:
         self._last_motion: dict[str, float] = {}
         self._seen: dict[str, bool] = {}
         self._off_since: dict[str, float] = {}
+        self._present_since: dict[str, float] = {}
         self._lux_samples: dict[str, list[tuple[float, float]]] = {}
         self._manual_clear: dict[str, int] = {}
         self._expect: dict[str, str] = {}
@@ -154,6 +155,10 @@ class AdaptiveLightManager:
         if zone not in self.cfg.zones:
             return "skip"
         spec = self.cfg.zones[zone]
+        if self.occupied(zone):
+            self._present_since.setdefault(zone, self.now())
+        else:
+            self._present_since.pop(zone, None)
         self._log_enabled(zone)
         self._log_occupied(zone)
         self._lux_hold.discard(zone)
@@ -220,7 +225,13 @@ class AdaptiveLightManager:
                 command = "off"
                 handed_back = True
                 self._off_since.pop(zone, None)
-        if command == "on":
+        entry_wait = False
+        if command == "on" and self.now() - self._present_since.get(zone, self.now()) < self._entry_delay(spec):
+            command = "wait"
+            entry_wait = True
+        if entry_wait:
+            reason = "entry-delay"
+        elif command == "on":
             reason = self._on_reason(zone, threshold, average)
         elif handed_back:
             reason = "hand-back"
@@ -409,6 +420,17 @@ class AdaptiveLightManager:
             for zone, spec in mgr.cfg.zones.items():
                 if spec.get("night"):
                     await mgr.apply(zone)
+
+    def _entry_delay(self, spec: dict) -> float:
+        """Seconds a presence sensor must stay on before the lamps turn on.
+
+        The night field applies only while night mode's window is active and its
+        switch is on. Off, the night delay is the day delay.
+        """
+        day = float(spec.get("entry_delay", 2))
+        if spec.get("night_entry") is True and self._in_night(spec):
+            return float(spec.get("night_entry_delay", 5))
+        return day
 
     def _in_night(self, spec: dict) -> bool:
         if not spec.get("night"):
@@ -692,6 +714,10 @@ class AdaptiveLightManager:
         since = self._off_since.get(zone)
         if since is not None:
             delays.append(float(spec["off_timeout"]) - (self.now() - since))
+        if self.occupied(zone):
+            started = self._present_since.get(zone)
+            if started is not None:
+                delays.append(self._entry_delay(spec) - (self.now() - started))
         if zone not in self._night_hold and self._in_night(spec) and self.occupied(zone):
             last = self._last_motion.get(zone)
             if last is not None:

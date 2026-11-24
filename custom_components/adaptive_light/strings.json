@@ -19,7 +19,8 @@
       "bad_color": "Enter red, green, and blue from 0 to 255",
       "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more",
-      "bad_active_window": "Enter both From and To. Equal times are not a window."
+      "bad_active_window": "Enter both From and To. Equal times are not a window.",
+      "bad_entry_delay": "Enter the delay in seconds"
     },
     "abort": {
       "already_configured": "Outdoor light is already configured"
@@ -52,6 +53,10 @@
           "brightness": "Brightness",
           "hold_brightness": "Hold brightness",
           "off_timeout": "Off timeout, s",
+          "entry": "Entry delay",
+          "entry_delay": "Day, s",
+          "night_entry": "Use a night delay",
+          "night_entry_delay": "Night, s",
           "night": "Night mode",
           "night_start": "Night from",
           "night_end": "Night until",
@@ -177,6 +182,18 @@
             "data": {
               "group_8_from": "From",
               "group_8_to": "To"
+            }
+          },
+          "entry": {
+            "name": "Entry delay",
+            "description": "How long a presence sensor must stay on before the lamps turn on. A shorter spike does not turn them on. Day is that delay. Use a night delay is off by default, so night uses the day delay. On, and inside the night window, night uses its own delay.",
+            "data": {
+              "entry_delay": "Day, s",
+              "night_entry": "Use a night delay",
+              "night_entry_delay": "Night, s"
+            },
+            "data_description": {
+              "night_entry": "Off uses the day delay at night. On uses the night delay while the night window is active."
             }
           },
           "night_mode": {
@@ -232,7 +249,8 @@
       "bad_color": "Enter red, green, and blue from 0 to 255",
       "bad_color_temp": "Enter a color temperature from 1000 to 10000 K",
       "bad_factor": "Enter a radiation factor of zero or more",
-      "bad_active_window": "Enter both From and To. Equal times are not a window."
+      "bad_active_window": "Enter both From and To. Equal times are not a window.",
+      "bad_entry_delay": "Enter the delay in seconds"
     },
     "step": {
       "zone": {
@@ -254,6 +272,10 @@
           "brightness": "Brightness",
           "hold_brightness": "Hold brightness",
           "off_timeout": "Off timeout, s",
+          "entry": "Entry delay",
+          "entry_delay": "Day, s",
+          "night_entry": "Use a night delay",
+          "night_entry_delay": "Night, s",
           "night": "Night mode",
           "night_start": "Night from",
           "night_end": "Night until",
@@ -379,6 +401,18 @@
             "data": {
               "group_8_from": "From",
               "group_8_to": "To"
+            }
+          },
+          "entry": {
+            "name": "Entry delay",
+            "description": "How long a presence sensor must stay on before the lamps turn on. A shorter spike does not turn them on. Day is that delay. Use a night delay is off by default, so night uses the day delay. On, and inside the night window, night uses its own delay.",
+            "data": {
+              "entry_delay": "Day, s",
+              "night_entry": "Use a night delay",
+              "night_entry_delay": "Night, s"
+            },
+            "data_description": {
+              "night_entry": "Off uses the day delay at night. On uses the night delay while the night window is active."
             }
           },
           "night_mode": {
