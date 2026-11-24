@@ -78,4 +78,8 @@ A separate window. It does not replace active hours. The switch defaults off, an
 
 ## Adaptive Lighting
 
-Adaptive Lighting is called only when Hold color or Hold brightness is on. The call marks the part the zone sent, so Adaptive Lighting does not change it. Empty red, green, blue, and Kelvin with Hold color on still does not call Adaptive Lighting. With both boxes off, the lamp call is only `light.turn_on` with `entity_id`.
+Adaptive Lighting is called only when Hold color or Hold brightness is on. The call marks the part the zone sent, so Adaptive Lighting does not change it. Empty red, green, blue, and Kelvin with Hold color on still does not call Adaptive Lighting. With both boxes off, Adaptive Lighting is not called.
+
+### Turning a lamp on
+
+Presence, a lux average below the threshold, and the return from night all turn a lamp on with `light.turn_on`. The call includes that lamp's color and brightness: the values it has now, or the last ones it reported. A call with only the entity id makes Adaptive Lighting recalculate at once. Color and brightness in the call let `adapt_only_on_bare_turn_on` leave the color alone. A lamp that has never reported either is still called with the entity id only. Hold color and Hold brightness still send the zone's own values. A lamp switched off by hand stays off.

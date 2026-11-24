@@ -140,8 +140,8 @@ def test_a_single_presence_sensor_still_turns_lamps_on_and_off():
     assert home.services.calls == [("light", "turn_off", {"entity_id": ["light.a", "light.b"]})]
 
 
-def _saw(mgr, home, entity, state):
-    home.states.set(entity, state)
+def _saw(mgr, home, entity, state, attributes=None):
+    home.states.set(entity, state, attributes)
     mgr.note_lamp_change(entity, state)
 
 
@@ -682,6 +682,112 @@ def test_night_still_still_turns_the_lamps_off_when_the_sensor_stays_on():
     clock.t += 10
     assert run(mgr.apply("hall")) == "night"
     assert home.services.calls == []
+
+
+def test_turn_on_repeats_the_color_and_brightness_still_on_the_lamp():
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    shared = {"color_mode": "rgb", "rgb_color": (10, 20, 30), "brightness": 180}
+    home.states.set("light.a", "off", attributes=shared)
+    home.states.set("light.b", "off", attributes=dict(shared))
+    mgr = manager(home, ["binary_sensor.p"])
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.a", "light.b"], "rgb_color": [10, 20, 30], "brightness": 180}),
+        ("light", "turn_on", {"entity_id": ["light.a", "light.b"], "rgb_color": [10, 20, 30]}),
+    ]
+
+
+def test_turn_on_repeats_the_last_color_after_the_off_state_drops_it():
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    mgr = manager(home, ["binary_sensor.p"], timeout=10)
+    run(mgr.apply("hall"))
+    painted = {"color_mode": "rgb", "rgb_color": (4, 5, 6), "brightness": 90}
+    _saw(mgr, home, "light.a", "on", painted)
+    _saw(mgr, home, "light.b", "on", painted)
+    home.states.set("binary_sensor.p", "off")
+    home.t = 0
+    run(mgr.apply("hall"))
+    home.t = 10
+    assert run(mgr.apply("hall")) == "off"
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == set()
+    home.services.calls.clear()
+    home.states.set("binary_sensor.p", "on")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.a", "light.b"], "rgb_color": [4, 5, 6], "brightness": 90}),
+        ("light", "turn_on", {"entity_id": ["light.a", "light.b"], "rgb_color": [4, 5, 6]}),
+    ]
+
+
+def test_two_lamps_keep_their_own_color_and_a_hand_off_stays_off():
+    home = Home()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off", attributes={"color_mode": "rgb", "rgb_color": (1, 2, 3), "brightness": 10})
+    home.states.set("light.b", "off", attributes={"color_mode": "color_temp", "color_temp_kelvin": 2700, "brightness": 40})
+    mgr = manager(home, ["binary_sensor.p"], timeout=10)
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.a"], "rgb_color": [1, 2, 3], "brightness": 10}),
+        ("light", "turn_on", {"entity_id": ["light.a"], "rgb_color": [1, 2, 3]}),
+        ("light", "turn_on", {"entity_id": ["light.b"], "color_temp_kelvin": 2700, "brightness": 40}),
+        ("light", "turn_on", {"entity_id": ["light.b"], "color_temp_kelvin": 2700}),
+    ]
+    _saw(mgr, home, "light.a", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3), "brightness": 10})
+    _saw(mgr, home, "light.b", "on", {"color_mode": "color_temp", "color_temp_kelvin": 2700, "brightness": 40})
+    _saw(mgr, home, "light.a", "off")
+    assert mgr.manual_off == {"light.a"}
+    home.services.calls.clear()
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == []
+
+    home.states.set("binary_sensor.p", "off")
+    home.t = 0
+    run(mgr.apply("hall"))
+    home.t = 10
+    run(mgr.apply("hall"))
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == {"light.a"}
+    home.services.calls.clear()
+    home.states.set("binary_sensor.p", "on")
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.b"], "color_temp_kelvin": 2700, "brightness": 40}),
+        ("light", "turn_on", {"entity_id": ["light.b"], "color_temp_kelvin": 2700}),
+    ]
+    assert mgr.manual_off == {"light.a"}
+
+
+def test_night_return_repeats_the_last_color():
+    home, clock = Home(), Clock()
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off")
+    home.states.set("light.b", "off")
+    mgr = _night_manager(home, clock)
+    assert run(mgr.apply("hall")) == "on"
+    painted = {"color_mode": "rgb", "rgb_color": (7, 8, 9), "brightness": 50}
+    _saw(mgr, home, "light.a", "on", painted)
+    _saw(mgr, home, "light.b", "on", painted)
+    clock.t = 60 * 60
+    clock.hour, clock.minute = 4, 0
+    assert run(mgr.apply("hall")) == "night"
+    _saw(mgr, home, "light.a", "off")
+    _saw(mgr, home, "light.b", "off")
+    assert mgr.manual_off == set()
+    home.states.set("binary_sensor.p", "off")
+    run(mgr.apply("hall"))
+    home.states.set("binary_sensor.p", "on")
+    home.services.calls.clear()
+    assert run(mgr.apply("hall")) == "on"
+    assert home.services.calls == [
+        ("light", "turn_on", {"entity_id": ["light.a", "light.b"], "rgb_color": [7, 8, 9], "brightness": 50}),
+        ("light", "turn_on", {"entity_id": ["light.a", "light.b"], "rgb_color": [7, 8, 9]}),
+    ]
 
 
 def test_an_old_rule_config_is_dropped():

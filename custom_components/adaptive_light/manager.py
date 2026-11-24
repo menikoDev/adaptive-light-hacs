@@ -36,6 +36,7 @@ class AdaptiveLightManager:
         self._expect: dict[str, str] = {}
         self._own_contexts: set[str] = set()
         self._lamp_seen: dict[str, str] = {}
+        self._lamp_light: dict[str, dict] = {}
         self._log_state: dict[tuple[str, str], str] = {}
         self._decision: dict[str, str] = {}
         self._decision_reason: dict[str, str] = {}
@@ -500,7 +501,7 @@ class AdaptiveLightManager:
     async def _set_lamps(self, zone: str, lamps: list[str], want: str, reason: str) -> None:
         spec = self.cfg.zones.get(zone) or {}
         color_fields = _service_color(spec) if want == "on" else {}
-        need = []
+        planned: list[tuple[str, dict]] = []
         for entity in lamps:
             if not self._owns(zone, entity):
                 continue
@@ -510,7 +511,8 @@ class AdaptiveLightManager:
             # lamp does not remain at whatever Adaptive Lighting last wrote.
             if self._already(entity, want) and not color_fields:
                 continue
-            facts = self._service_facts(zone, entity, want, color_fields)
+            fields = _with_lamp_light(color_fields, self._light_for_turn(entity)) if want == "on" else {}
+            facts = self._service_facts(zone, entity, want, fields)
             if want == "on" and self._manual_blocked(entity):
                 if entity not in self._block_logged:
                     self._emit(zone, entity, current, "on", "manual-off-block", **facts)
@@ -518,10 +520,10 @@ class AdaptiveLightManager:
                 continue
             self._block_logged.discard(entity)
             self._emit(zone, entity, current, want, reason, **facts)
-            need.append(entity)
-        if not need:
+            planned.append((entity, fields))
+        if not planned:
             return
-        for entity in need:
+        for entity, _fields in planned:
             for mgr in self._peers():
                 if entity in mgr._lamps:
                     mgr._expect[entity] = want
@@ -531,19 +533,20 @@ class AdaptiveLightManager:
         if manual is not None:
             # Mark the lamps before turn_on. Adaptive Lighting adapts an off→on
             # event and would otherwise replace a held color or brightness.
-            await self._mark_adaptive_lighting(need, manual)
-        data: dict[str, Any] = {"entity_id": need, **color_fields}
-        await self.hass.services.async_call("light", _SERVICE[want], data, **kwargs)
-        if want == "on" and "brightness" in color_fields:
-            # A combined brightness and color call is dropped by some lamps: the
-            # light turns on, and the color never lands. Color goes last.
-            color_only = {key: value for key, value in color_fields.items() if key != "brightness"}
-            if color_only:
-                await self.hass.services.async_call(
-                    "light", "turn_on", {"entity_id": need, **color_only}, **kwargs
-                )
+            await self._mark_adaptive_lighting([entity for entity, _fields in planned], manual)
+        for fields, entities in _group_lamps(planned):
+            data: dict[str, Any] = {"entity_id": entities, **fields}
+            await self.hass.services.async_call("light", _SERVICE[want], data, **kwargs)
+            if want == "on" and "brightness" in fields:
+                # A combined brightness and color call is dropped by some lamps: the
+                # light turns on, and the color never lands. Color goes last.
+                color_only = {key: value for key, value in fields.items() if key != "brightness"}
+                if color_only:
+                    await self.hass.services.async_call(
+                        "light", "turn_on", {"entity_id": entities, **color_only}, **kwargs
+                    )
         if want == "off" and _manual_control(_service_color(spec)) is not None:
-            released = [entity for entity in need if self._lamp_state(entity) == "off"]
+            released = [entity for entity, _fields in planned if self._lamp_state(entity) == "off"]
             await self._mark_adaptive_lighting(released, False)
 
     def _own_context(self):
@@ -578,6 +581,28 @@ class AdaptiveLightManager:
             state = self.hass.states.get(entity)
             if state is not None and state.state in ("on", "off"):
                 self._lamp_seen[entity] = state.state
+            self._remember_light(entity)
+
+    def _remember_light(self, entity: str) -> None:
+        """Keep the last color and brightness a lamp reported. An empty state does not erase them."""
+        reported = _reported_light(self.hass.states.get(entity))
+        if not reported:
+            return
+        saved = dict(self._lamp_light.get(entity, {}))
+        if "brightness" in reported:
+            saved["brightness"] = reported["brightness"]
+        color = {key: value for key, value in reported.items() if key != "brightness"}
+        if color:
+            for key in list(saved):
+                if key != "brightness":
+                    del saved[key]
+            saved.update(color)
+        self._lamp_light[entity] = saved
+
+    def _light_for_turn(self, entity: str) -> dict:
+        """Color and brightness to repeat: the lamp's current values, or the last ones."""
+        self._remember_light(entity)
+        return dict(self._lamp_light.get(entity, {}))
 
     def note_lamp_change(self, entity: str, new_state: str, *, caused_by_us: bool | None = None) -> None:
         """Record a lamp state change.
@@ -588,6 +613,7 @@ class AdaptiveLightManager:
         """
         if entity not in self._lamps or new_state not in ("on", "off"):
             return
+        self._remember_light(entity)
         previous = self._lamp_seen.get(entity)
         self._lamp_seen[entity] = new_state
         matched = any(mgr._expect.get(entity) == new_state for mgr in self._peers())
@@ -927,6 +953,129 @@ def _color_matches(hass, entity: str, fields: dict) -> bool:
         if int(current) != int(fields["brightness"]):
             return False
     return True
+
+
+_COLOR_KEYS = (
+    "rgb_color", "rgbw_color", "rgbww_color", "hs_color", "xy_color", "color_temp_kelvin", "color_name",
+)
+_MODE_COLOR = {
+    "rgb": "rgb_color",
+    "rgbw": "rgbw_color",
+    "rgbww": "rgbww_color",
+    "hs": "hs_color",
+    "xy": "xy_color",
+    "color_temp": "color_temp_kelvin",
+    "white": "color_temp_kelvin",
+}
+
+
+def _reported_light(state) -> dict[str, Any]:
+    """Color and brightness still on a lamp state. One color, matching its color mode."""
+    attrs = getattr(state, "attributes", None) or {}
+    data: dict[str, Any] = {}
+    brightness = _brightness_value(attrs.get("brightness"))
+    if brightness is not None:
+        data["brightness"] = brightness
+    mode = attrs.get("color_mode")
+    preferred = _MODE_COLOR.get(mode) if isinstance(mode, str) else None
+    order = (preferred,) if preferred else _COLOR_KEYS
+    seen = set()
+    for key in (*order, *_COLOR_KEYS):
+        if key in seen or key is None:
+            continue
+        seen.add(key)
+        value = _color_value(key, attrs.get(key))
+        if value is not None:
+            data[key] = value
+            break
+    return data
+
+
+def _brightness_value(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not value.is_integer():
+        return None
+    number = int(value)
+    if number < 1 or number > 255:
+        return None
+    return number
+
+
+def _color_value(key: str, value: Any) -> Any:
+    if key == "color_name":
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+    if key == "color_temp_kelvin":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        if isinstance(value, float) and not value.is_integer():
+            return None
+        number = int(value)
+        if number < 1000 or number > 10000:
+            return None
+        return number
+    size = {"rgb_color": 3, "rgbw_color": 4, "rgbww_color": 5, "hs_color": 2, "xy_color": 2}.get(key)
+    if size is None or not isinstance(value, (list, tuple)) or len(value) != size:
+        return None
+    numbers = []
+    for part in value:
+        if isinstance(part, bool) or not isinstance(part, (int, float)):
+            return None
+        numbers.append(part)
+    if key in ("rgb_color", "rgbw_color", "rgbww_color"):
+        if any((isinstance(part, float) and not part.is_integer()) or not (0 <= int(part) <= 255) for part in numbers):
+            return None
+        return [int(part) for part in numbers]
+    if key == "hs_color":
+        hue, sat = numbers
+        if not 0 <= float(hue) <= 360 or not 0 <= float(sat) <= 100:
+            return None
+        return [float(hue), float(sat)]
+    x_value, y_value = numbers
+    if not 0 <= float(x_value) <= 1 or not 0 <= float(y_value) <= 1:
+        return None
+    return [float(x_value), float(y_value)]
+
+
+def _with_lamp_light(zone_fields: dict, lamp_fields: dict) -> dict:
+    """Zone color and brightness win. The lamp fills whichever of the two the zone left out."""
+    data = dict(zone_fields)
+    zone_color = any(key in data for key in _COLOR_KEYS)
+    if "brightness" not in data and "brightness" in lamp_fields:
+        data["brightness"] = lamp_fields["brightness"]
+    if not zone_color:
+        for key in _COLOR_KEYS:
+            if key in lamp_fields:
+                data[key] = lamp_fields[key]
+                break
+    return data
+
+
+def _group_lamps(planned: list[tuple[str, dict]]) -> list[tuple[dict, list[str]]]:
+    """Lamps that share one color and brightness go in one call. Others stay apart."""
+    groups: list[tuple[dict, list[str]]] = []
+    index: dict[tuple, int] = {}
+    for entity, fields in planned:
+        key = _payload_key(fields)
+        slot = index.get(key)
+        if slot is None:
+            index[key] = len(groups)
+            groups.append((fields, [entity]))
+        else:
+            groups[slot][1].append(entity)
+    return groups
+
+
+def _payload_key(fields: dict) -> tuple:
+    items = []
+    for key in sorted(fields):
+        value = fields[key]
+        if isinstance(value, list):
+            value = tuple(value)
+        items.append((key, value))
+    return tuple(items)
 
 
 def _service_color(spec: dict) -> dict[str, Any]:

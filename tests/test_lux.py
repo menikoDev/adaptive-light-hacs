@@ -212,6 +212,27 @@ def test_manual_off_and_the_timeout_still_work():
     assert "light.b" not in mgr.manual_off
 
 
+def test_a_falling_average_turns_the_lamps_on_with_their_last_color():
+    home = Home()
+    home.states.set("sensor.room", "10")
+    cfg = raw(lux="sensor.room", threshold=50, window=1)
+    home.states.set("binary_sensor.p", "on")
+    home.states.set("light.a", "off", attributes={"color_mode": "rgb", "rgb_color": (9, 8, 7), "brightness": 120})
+    home.states.set("light.b", "off")
+    mgr = AdaptiveLightManager(home, cfg, now=home.now)
+    assert run(mgr.apply("hall")) == "on"
+    assert ("light", "turn_on", {"entity_id": ["light.a"], "rgb_color": [9, 8, 7], "brightness": 120}) in home.services.calls
+    assert ("light", "turn_on", {"entity_id": ["light.b"]}) in home.services.calls
+    _saw(mgr, home, "light.a", "on", {"color_mode": "rgb", "rgb_color": (9, 8, 7), "brightness": 120})
+    _saw(mgr, home, "light.a", "off")
+    assert "light.a" in mgr.manual_off
+    home.services.calls.clear()
+    home.t = 1
+    assert run(mgr.apply("hall")) == "on"
+    assert all("light.a" not in call[2].get("entity_id", []) for call in home.services.calls)
+    assert mgr.manual_off == {"light.a"}
+
+
 def test_a_hand_off_stays_off_when_the_average_falls_back_below_the_threshold():
     home = Home()
     home.states.set("sensor.room", "10")
